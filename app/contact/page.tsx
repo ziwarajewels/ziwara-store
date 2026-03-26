@@ -58,16 +58,6 @@ export default function ContactPage() {
 
           <div className="bg-white rounded-3xl p-10 border border-[#E8E0D0] hover:border-[#D4AF37] transition group text-center">
             <div className="w-12 h-12 mx-auto rounded-2xl bg-[#F9F6F0] flex items-center justify-center mb-6 group-hover:bg-[#D4AF37]/10 transition">
-              <Phone className="w-6 h-6 text-[#D4AF37]" />
-            </div>
-            <h3 className="font-semibold text-xl mb-4">Call Us</h3>
-            <div className="space-y-3 text-lg">
-              <a href="tel:+917225841587" className="block hover:text-[#D4AF37] transition">+91 72258 41587</a>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-3xl p-10 border border-[#E8E0D0] hover:border-[#D4AF37] transition group text-center">
-            <div className="w-12 h-12 mx-auto rounded-2xl bg-[#F9F6F0] flex items-center justify-center mb-6 group-hover:bg-[#D4AF37]/10 transition">
               👋
             </div>
             <h3 className="font-semibold text-xl mb-2">Meet the Maker</h3>
