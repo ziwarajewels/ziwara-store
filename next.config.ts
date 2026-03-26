@@ -1,6 +1,6 @@
-/** @type {import('next').NextConfig} */
 const nextConfig = {
   images: {
+    unoptimized: true, // 🔥 ADD THIS
     remotePatterns: [
       {
         protocol: 'https',
