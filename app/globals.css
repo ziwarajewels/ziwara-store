@@ -1,26 +1,34 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-background: #F9F6F0;
+  --color-foreground: #2A3F35;
+  --color-primary: #D4AF37;
+  --color-secondary: #2A3F35;
+  --color-accent: #D4AF37;
+  --color-border: #E8E0D0;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* Ziwara Premium Theme */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Playfair Display', serif;
+  background-color: #F9F6F0;
+  color: #2A3F35;
+}
+
+h1, h2, h3, h4 {
+  font-family: 'Playfair Display', serif;
+  font-weight: 600;
+}
+
+/* Luxury hover effects */
+button:hover {
+  background-color: #D4AF37;
+  color: #2A3F35;
+}
+
+.card {
+  box-shadow: 0 10px 30px -10px rgba(42, 63, 53, 0.08);
 }
