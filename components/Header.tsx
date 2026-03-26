@@ -91,7 +91,7 @@ export default function Header() {
           <Link href="/" className="flex items-center gap-3">
             <div className="w-12 h-12 md:w-16 md:h-16 rounded-full overflow-hidden border-2 border-[#D4AF37]/30 shadow-sm bg-white flex items-center justify-center">
               <Image
-                src="/logocenter.png"
+                src="/Logocenter.png"
                 alt="Ziwara"
                 width={48}
                 height={48}
@@ -165,7 +165,7 @@ export default function Header() {
         <div className="px-6 py-6 border-b border-[#E8E0D0] flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Image
-              src="/logocenter.png"
+              src="/Logocenter.png"
               alt="Ziwara"
               width={48}
               height={48}

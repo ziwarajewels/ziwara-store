@@ -48,7 +48,7 @@ export default function SignIn() {
         <div className="flex justify-center mb-8">
           <div className="w-16 h-16 rounded-full overflow-hidden border border-[#D4AF37]/30">
             <Image
-              src="/logocenter.png"
+              src="/Logocenter.png"
               alt="Ziwara"
               width={64}
               height={64}
