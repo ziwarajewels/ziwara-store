@@ -50,7 +50,9 @@ export default function SignUp() {
   const handleGoogle = async () => {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${window.location.origin}/account` }
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
     });
   };
 
@@ -63,64 +65,64 @@ export default function SignUp() {
         <form onSubmit={handleSignUp} className="space-y-6">
           <div>
             <label className="block text-sm font-medium mb-2">Full Name</label>
-            <input 
-              type="text" 
-              value={fullName} 
-              onChange={(e) => setFullName(e.target.value)} 
-              className="w-full border border-[#E8E0D0] rounded-full px-6 py-4 text-base" 
-              required 
+            <input
+              type="text"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              className="w-full border border-[#E8E0D0] rounded-full px-6 py-4 text-base"
+              required
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium mb-2">Email</label>
-            <input 
-              type="email" 
-              value={email} 
-              onChange={(e) => setEmail(e.target.value)} 
-              className="w-full border border-[#E8E0D0] rounded-full px-6 py-4 text-base" 
-              required 
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full border border-[#E8E0D0] rounded-full px-6 py-4 text-base"
+              required
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium mb-2">Phone Number</label>
-            <input 
-              type="tel" 
-              value={phone} 
-              onChange={(e) => setPhone(e.target.value)} 
-              className="w-full border border-[#E8E0D0] rounded-full px-6 py-4 text-base" 
-              placeholder="+91 98765 43210" 
-              required 
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              className="w-full border border-[#E8E0D0] rounded-full px-6 py-4 text-base"
+              placeholder="+91 98765 43210"
+              required
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium mb-2">Password (min 8 characters)</label>
-            <input 
-              type="password" 
-              value={password} 
-              onChange={(e) => setPassword(e.target.value)} 
-              className="w-full border border-[#E8E0D0] rounded-full px-6 py-4 text-base" 
-              required 
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full border border-[#E8E0D0] rounded-full px-6 py-4 text-base"
+              required
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium mb-2">Shipping Address</label>
-            <textarea 
-              value={address} 
-              onChange={(e) => setAddress(e.target.value)} 
-              className="w-full border border-[#E8E0D0] rounded-3xl px-6 py-4 h-24 text-base" 
-              required 
+            <textarea
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              className="w-full border border-[#E8E0D0] rounded-3xl px-6 py-4 h-24 text-base"
+              required
             />
           </div>
 
           {error && <p className="text-red-500 text-sm text-center">{error}</p>}
 
-          <button 
-            type="submit" 
-            disabled={loading} 
+          <button
+            type="submit"
+            disabled={loading}
             className="w-full bg-[#2A3F35] text-white py-4 rounded-full font-medium hover:bg-[#D4AF37] transition disabled:opacity-70 text-base"
           >
             {loading ? "Creating Account..." : "Create Account"}
@@ -129,8 +131,8 @@ export default function SignUp() {
 
         <div className="my-6 text-center text-sm text-[#2A3F35]/60">— OR —</div>
 
-        <button 
-          onClick={handleGoogle} 
+        <button
+          onClick={handleGoogle}
           className="w-full border border-[#E8E0D0] py-4 rounded-full font-medium hover:bg-[#F9F6F0] flex items-center justify-center gap-3 text-base"
         >
           <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="Google" />
