@@ -76,7 +76,7 @@ export default function Home() {
           { icon: Leaf, title: "Artisanal Crafts", desc: "Every piece is hand-finished in our boutique studio." },
           { icon: Leaf, title: "Kind to Earth", desc: "100% recycled metals and responsibly sourced gems." },
           { icon: Award, title: "Forever Guarantee", desc: "Lifetime repairs on all handcrafted items." },
-          { icon: Globe, title: "Global Journey", desc: "Carbon-neutral worldwide delivery for all orders." },
+          { icon: Globe, title: "Global Journey", desc: "Carbon-neutral delivery for all orders within Sehore and VIT Bhopal." },
         ].map((item, i) => (
           <div key={i} className="flex flex-col items-center">
             <item.icon className="w-9 h-9 md:w-10 md:h-10 text-[#2A3F35] mb-4" />
