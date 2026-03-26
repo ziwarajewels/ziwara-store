@@ -72,11 +72,6 @@ export default function Footer() {
                 <a href="mailto:ziwarajewels@gmail.com" className="block hover:text-[#D4AF37] transition">
                   ziwarajewels@gmail.com
                 </a>
-                <div className="space-y-1">
-                  <a href="tel:+917225841587" className="block hover:text-[#D4AF37] transition">
-                    +91 72258 41587
-                  </a>
-                </div>
               </div>
             </div>
           </div>
