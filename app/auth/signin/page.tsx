@@ -1,7 +1,7 @@
 'use client';
-
 import { useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
+import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 
@@ -10,6 +10,7 @@ export default function SignIn() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const router = useRouter();
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,7 +36,7 @@ export default function SignIn() {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: `${window.location.origin}/account`,
       },
     });
   };
@@ -52,14 +53,11 @@ export default function SignIn() {
               width={64}
               height={64}
               className="object-contain"
-              unoptimized
             />
           </div>
         </div>
 
-        <h1 className="text-3xl font-bold text-center mb-8 text-[#2A3F35]">
-          Welcome Back
-        </h1>
+        <h1 className="text-3xl font-bold text-center mb-8 text-[#2A3F35]">Welcome Back</h1>
 
         {error && (
           <div className="bg-red-50 text-red-700 p-4 rounded-2xl mb-6 text-center font-medium">
@@ -73,7 +71,7 @@ export default function SignIn() {
             placeholder="Email Address"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full border border-[#E8E0D0] rounded-full px-6 py-4"
+            className="w-full border border-[#E8E0D0] rounded-full px-6 py-4 focus:outline-none focus:border-[#D4AF37] text-base"
             required
           />
 
@@ -82,32 +80,33 @@ export default function SignIn() {
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full border border-[#E8E0D0] rounded-full px-6 py-4"
+            className="w-full border border-[#E8E0D0] rounded-full px-6 py-4 focus:outline-none focus:border-[#D4AF37] text-base"
             required
           />
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-[#2A3F35] text-white py-4 rounded-full"
+            className="w-full bg-[#2A3F35] hover:bg-[#D4AF37] hover:text-[#2A3F35] text-white py-4 rounded-full font-medium transition disabled:opacity-70 text-base"
           >
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
 
-        <div className="my-8 text-center text-sm">— OR —</div>
+        <div className="my-8 text-center text-sm text-[#2A3F35]/60">— OR —</div>
 
         <button
           onClick={handleGoogleLogin}
-          className="w-full border py-4 rounded-full flex items-center justify-center gap-3"
+          disabled={loading}
+          className="w-full flex items-center justify-center gap-3 border border-[#E8E0D0] hover:bg-[#F9F6F0] py-4 rounded-full font-medium transition text-base"
         >
-          <img src="https://www.google.com/favicon.ico" className="w-5 h-5" />
+          <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5" />
           Continue with Google
         </button>
 
-        <p className="text-center mt-6 text-sm">
-          Don’t have an account?{' '}
-          <Link href="/auth/signup" className="text-[#D4AF37]">
+        <p className="text-center mt-10 text-sm text-[#2A3F35]/70">
+          Don&apos;t have an account?{' '}
+          <Link href="/auth/signup" className="text-[#D4AF37] font-medium hover:underline">
             Sign Up
           </Link>
         </p>
