@@ -75,7 +75,7 @@ export default function Home() {
         {[
           { icon: Leaf, title: "Artisanal Crafts", desc: "Every piece is hand-finished in our boutique studio." },
           { icon: Leaf, title: "Kind to Earth", desc: "100% recycled metals and responsibly sourced gems." },
-          { icon: Award, title: "Forever Guarantee", desc: "Lifetime repairs on all handcrafted items." },
+          { icon: Award, title: "Anti-Tarnished Jewels", desc: "These Jewels comes with AntiTarnishing property" },
           { icon: Globe, title: "Global Journey", desc: "Carbon-neutral delivery for all orders within Sehore and VIT Bhopal." },
         ].map((item, i) => (
           <div key={i} className="flex flex-col items-center">
