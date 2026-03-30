@@ -1,4 +1,5 @@
 'use client';
+
 import Image from 'next/image';
 import Link from 'next/link';
 import { useState, useEffect, useMemo } from 'react';
@@ -16,9 +17,10 @@ export default function ShopContent() {
   const [selectedMaterials, setSelectedMaterials] = useState<string[]>([]);
   const [selectedGemstones, setSelectedGemstones] = useState<string[]>([]);
   const [selectedColors, setSelectedColors] = useState<string[]>([]);
-  const [priceRange, setPriceRange] = useState(800);
+  const [priceRange, setPriceRange] = useState(1000); // will be overridden by real max price
   const [sortType, setSortType] = useState<'newest' | 'price-low' | 'price-high'>('newest');
 
+  // Fetch products once
   useEffect(() => {
     async function fetchProducts() {
       const { data } = await supabase
@@ -32,6 +34,43 @@ export default function ShopContent() {
     }
     fetchProducts();
   }, []);
+
+  // Realtime updates (when any product stock changes after purchase)
+  useEffect(() => {
+    const channel = supabase
+      .channel('shop-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'products' },
+        () => {
+          // Refetch to keep everything live
+          supabase
+            .from('products')
+            .select('*')
+            .eq('is_limited', false)
+            .order('created_at', { ascending: false })
+            .then(({ data }) => {
+              setProducts(data || []);
+            });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // Dynamic max price based on actual products
+  const maxPrice = useMemo(() => {
+    if (products.length === 0) return 1000;
+    return Math.max(...products.map(p => p.price || 0));
+  }, [products]);
+
+  // Update priceRange when maxPrice changes (first load)
+  useEffect(() => {
+    setPriceRange(maxPrice);
+  }, [maxPrice]);
 
   const categories = [...new Set(products.map(p => p.category))];
   const materials = [...new Set(products.map(p => p.material).filter(Boolean))];
@@ -118,7 +157,7 @@ export default function ShopContent() {
                 setSelectedMaterials([]); 
                 setSelectedGemstones([]); 
                 setSelectedColors([]); 
-                setPriceRange(800); 
+                setPriceRange(maxPrice); 
               }} className="text-sm text-[#D4AF37] hover:text-[#2A3F35]">Clear All</button>
             </div>
 
@@ -182,10 +221,17 @@ export default function ShopContent() {
               </div>
             )}
 
-            {/* Price Range */}
+            {/* Price Range - NOW DYNAMIC */}
             <div>
               <h4 className="font-medium mb-4 text-[#2A3F35]">Price Range</h4>
-              <input type="range" min="100" max="800" value={priceRange} onChange={e => setPriceRange(Number(e.target.value))} className="w-full accent-[#D4AF37]" />
+              <input 
+                type="range" 
+                min="100" 
+                max={maxPrice} 
+                value={priceRange} 
+                onChange={e => setPriceRange(Number(e.target.value))} 
+                className="w-full accent-[#D4AF37]" 
+              />
               <div className="flex justify-between text-xs mt-2 text-[#2A3F35]/70">
                 <span>₹100</span>
                 <span>₹{priceRange}</span>
@@ -211,7 +257,6 @@ export default function ShopContent() {
                   <h3 className="font-medium mt-1 text-[#2A3F35] group-hover:text-[#D4AF37] transition">{product.name}</h3>
                   <p className="text-[#D4AF37] font-medium mt-1">₹{product.price}</p>
 
-                  {/* Clean Color Info - No Swatches */}
                   {product.colors && product.colors.length > 0 && (
                     <p className="text-xs text-[#D4AF37] mt-2">
                       Available in {product.colors.length} colors
