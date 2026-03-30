@@ -65,7 +65,7 @@ export default function OurStory() {
         {/* Kritika's Photo */}
         <div className="relative aspect-[4/3] rounded-3xl overflow-hidden shadow-2xl border border-[#E8E0D0]">
           <Image 
-            src="/Kritika.jpeg"
+            src="/Kritika.webp"
             alt="Kritika - Founder of Ziwara"
             fill 
             className="object-cover"
