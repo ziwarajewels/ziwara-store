@@ -23,7 +23,7 @@ export default function Home() {
         .eq('is_limited', false)
         .order('created_at', { ascending: false });
 
-      if (limited) query.limit(10);
+      if (limited) query.limit(8);
 
       const { data: featured } = await query;
 

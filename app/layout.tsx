@@ -4,7 +4,7 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://ziwara-store.vercel.app'), // 🔥 replace with your real domain
+  metadataBase: new URL('https://ziwarajewels.vercel.app'),
 
   title: {
     default: 'Ziwara | Handcrafted Jewelry Inspired by Nature',
@@ -12,28 +12,33 @@ export const metadata: Metadata = {
   },
 
   description:
-    'Premium handcrafted jewelry by Kritika & Saransh. Ethically sourced, sustainably made, and designed with love.',
+    'Premium handcrafted jewelry by Kritika & Saransh. Ethically sourced, sustainably made with love and artistry.',
 
   keywords: [
     'handcrafted jewelry',
-    'ethical jewelry India',
+    'ethical jewelry',
     'sustainable jewelry',
     'ziwara',
+    'ziwarajewels',
     'indian handmade jewelry',
+    'gold jewelry india',
+    'pearl jewelry',
   ],
+
+  authors: [{ name: 'Kritika & Saransh' }],
 
   openGraph: {
     title: 'Ziwara | Handcrafted Jewelry Inspired by Nature',
     description:
-      'Premium handcrafted jewelry by Kritika & Saransh.',
-    url: '/',
+      'Premium handcrafted jewelry by Kritika & Saransh. Ethically sourced and designed with love.',
+    url: 'https://ziwarajewels.vercel.app',
     siteName: 'Ziwara',
     images: [
       {
         url: '/hero-bg.jpg',
         width: 1200,
         height: 630,
-        alt: 'Ziwara Jewelry',
+        alt: 'Ziwara Jewelry Collection',
       },
     ],
     locale: 'en_IN',
@@ -61,15 +66,19 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en-IN">
+      <head>
+        {/* Google Search Console Verification */}
+        <meta name="google-site-verification" content="3BVeD1rYTH3i2fh0bHaE5XQVddQjeJt5UFQB1KDY-8I" />
+      </head>
       <body className="bg-[#F9F6F0] text-[#2A3F35]">
         
-        {/* ✅ GLOBAL HEADER */}
+        {/* Global Header */}
         <Header />
 
-        {/* ✅ PAGE CONTENT */}
+        {/* Page Content */}
         <main>{children}</main>
 
-        {/* ✅ GLOBAL FOOTER */}
+        {/* Global Footer */}
         <Footer />
 
       </body>
