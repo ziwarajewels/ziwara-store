@@ -27,17 +27,38 @@ export default function AdminProducts() {
     files: [] as File[],
   });
 
-  useEffect(() => {
-    const loadProducts = async () => {
-      await fetchProducts();
-    };
-    loadProducts();
-  }, []);
-
+  // Fetch products initially
   const fetchProducts = async () => {
     const { data } = await supabase.from('products').select('*');
     setProducts(data || []);
   };
+
+  // Initial load + Real-time subscription
+  useEffect(() => {
+    fetchProducts();
+
+    // Real-time subscription for live updates (e.g., stock reduction after order)
+    const channel = supabase
+      .channel('products-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',           // Listen to INSERT, UPDATE, DELETE
+          schema: 'public',
+          table: 'products',
+        },
+        (payload) => {
+          console.log('Realtime change detected:', payload);
+          fetchProducts();     // Simple & reliable way
+        }
+      )
+      .subscribe();
+
+    // Cleanup on component unmount
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   const openModal = (product?: any) => {
     if (product) {
@@ -101,6 +122,7 @@ export default function AdminProducts() {
 
     let newImageUrls: string[] = [];
 
+    // Upload new general images (if any selected)
     for (const file of formData.files) {
       const fileName = `media-${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
       const { error } = await supabase.storage.from('product-images').upload(fileName, file);
@@ -113,9 +135,11 @@ export default function AdminProducts() {
       newImageUrls.push(data.publicUrl);
     }
 
+    // Handle color images (if new tempFile selected)
     const updatedColors = [];
     for (const color of formData.colors) {
       let imageUrl = color.image || '';
+
       if (color.tempFile) {
         const fileName = `color-${Date.now()}-${color.tempFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
         const { error } = await supabase.storage.from('product-images').upload(fileName, color.tempFile);
@@ -127,9 +151,15 @@ export default function AdminProducts() {
         const { data } = supabase.storage.from('product-images').getPublicUrl(fileName);
         imageUrl = data.publicUrl;
       }
-      updatedColors.push({ name: color.name, qty: color.qty, image: imageUrl });
+
+      updatedColors.push({ 
+        name: color.name, 
+        qty: color.qty, 
+        image: imageUrl 
+      });
     }
 
+    // Final payload - Keep old images if no new ones are uploaded
     const payload = {
       name: formData.name,
       slug: formData.slug.toLowerCase().replace(/\s+/g, '-'),
@@ -142,7 +172,10 @@ export default function AdminProducts() {
       is_new: formData.is_new,
       is_limited: formData.is_limited,
       colors: updatedColors,
-      images: newImageUrls.length > 0 ? newImageUrls : (editingProduct?.images || [])
+      // ✅ Fixed & Clear logic: Keep existing images unless new ones are uploaded
+      images: newImageUrls.length > 0 
+        ? newImageUrls 
+        : (editingProduct?.images || [])
     };
 
     const result = editingProduct
@@ -152,7 +185,7 @@ export default function AdminProducts() {
     if (!result.error) {
       toast.success(editingProduct ? "Product updated ✨" : "Product added ✨");
       setShowModal(false);
-      fetchProducts();
+      // No need to manually fetch here because realtime will handle it
     } else {
       toast.error(result.error.message || "Failed to save");
     }
@@ -164,7 +197,7 @@ export default function AdminProducts() {
     if (!confirm('Delete permanently?')) return;
     await supabase.from('products').delete().eq('id', id);
     toast.success('Product deleted');
-    fetchProducts();
+    // Realtime will automatically refresh the list
   };
 
   return (
@@ -268,7 +301,7 @@ export default function AdminProducts() {
         </div>
       </div>
 
-      {/* Modal remains the same as before */}
+      {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[100] p-4">
           <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
@@ -348,7 +381,9 @@ export default function AdminProducts() {
                       </div>
                       <div>
                         <label className="block text-xs font-medium mb-1">Photo</label>
-                        <input type="file" accept="image/*" onChange={(e) => { if (e.target.files?.[0]) updateColor(index, 'tempFile', e.target.files[0]); }} className="w-full text-sm" />
+                        <input type="file" accept="image/*" onChange={(e) => { 
+                          if (e.target.files?.[0]) updateColor(index, 'tempFile', e.target.files[0]); 
+                        }} className="w-full text-sm" />
                       </div>
                       <div className="flex gap-3">
                         <div className="flex-1">
@@ -367,11 +402,20 @@ export default function AdminProducts() {
               <div>
                 <label className="block text-sm font-medium mb-2 text-[#2A3F35]">General Images (optional)</label>
                 <input type="file" multiple accept="image/*" onChange={handleFileSelect} className="block w-full mb-4" />
+                {editingProduct && editingProduct.images?.length > 0 && (
+                  <p className="text-xs text-[#2A3F35]/60 mt-1">
+                    Current images will be kept if you don’t upload new ones.
+                  </p>
+                )}
               </div>
             </div>
 
             <div className="px-6 py-4 border-t bg-white sticky bottom-0">
-              <button onClick={saveProduct} disabled={uploading} className="w-full bg-[#2A3F35] text-white py-2 rounded-2xl font-medium hover:bg-[#D4AF37] transition-all">
+              <button 
+                onClick={saveProduct} 
+                disabled={uploading} 
+                className="w-full bg-[#2A3F35] text-white py-2 rounded-2xl font-medium hover:bg-[#D4AF37] transition-all disabled:opacity-70"
+              >
                 {uploading ? "Saving..." : editingProduct ? "Update Product" : "Add Product"}
               </button>
             </div>
