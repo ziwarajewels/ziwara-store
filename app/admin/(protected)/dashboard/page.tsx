@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import Link from 'next/link';
+import { Menu, X } from 'lucide-react';
 
 export default function AdminDashboard() {
   const [totalRevenue, setTotalRevenue] = useState(0);
@@ -9,6 +10,7 @@ export default function AdminDashboard() {
   const [totalOrders, setTotalOrders] = useState(0);
   const [lowStock, setLowStock] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   useEffect(() => {
     let channel: any;
@@ -42,56 +44,140 @@ export default function AdminDashboard() {
 
     fetchStats();
 
-    // Realtime subscription (safe cleanup)
+    // Realtime subscription
     channel = supabase
       .channel('dashboard-stats')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchStats)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, fetchStats)
       .subscribe();
 
-    // Cleanup function (must be synchronous)
     return () => {
       if (channel) supabase.removeChannel(channel);
     };
   }, []);
 
   if (loading) {
-    return <div className="flex min-h-screen items-center justify-center bg-[#F9F6F0]">Loading dashboard...</div>;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#F9F6F0]">
+        Loading dashboard...
+      </div>
+    );
   }
 
   return (
-    <div className="flex min-h-screen bg-[#F9F6F0]">
-      {/* Sidebar - unchanged */}
-      <div className="w-64 bg-white border-r border-[#E8E0D0] p-6 hidden md:block">
-        <nav className="space-y-2">
-          <Link href="/admin/dashboard" className="flex items-center gap-3 px-4 py-3 bg-[#2A3F35] text-white rounded-2xl font-medium">📊 Overview</Link>
-          <Link href="/admin/products" className="flex items-center gap-3 px-4 py-3 hover:bg-[#F9F6F0] rounded-2xl font-medium">📦 Products</Link>
-          <Link href="/admin/orders" className="flex items-center gap-3 px-4 py-3 hover:bg-[#F9F6F0] rounded-2xl font-medium">📋 Orders</Link>
-        </nav>
-      </div>
+    <>
+      <div className="flex min-h-screen bg-[#F9F6F0]">
+        {/* Sidebar - Desktop Only (consistent with other admin pages) */}
+        <div className="w-72 bg-white border-r border-[#E8E0D0] p-6 hidden md:block">
+          <nav className="space-y-2 mt-6">
+            <Link 
+              href="/admin/dashboard" 
+              className="flex items-center gap-3 px-4 py-3 bg-[#2A3F35] text-white rounded-2xl font-medium"
+            >
+              📊 Overview
+            </Link>
+            <Link 
+              href="/admin/products" 
+              className="flex items-center gap-3 px-4 py-3 hover:bg-[#F9F6F0] rounded-2xl font-medium"
+            >
+              📦 Products
+            </Link>
+            <Link 
+              href="/admin/orders" 
+              className="flex items-center gap-3 px-4 py-3 hover:bg-[#F9F6F0] rounded-2xl font-medium"
+            >
+              📋 Orders
+            </Link>
+          </nav>
+        </div>
 
-      <div className="flex-1 p-8">
-        <h1 className="text-4xl font-bold text-[#2A3F35] mb-10">Dashboard Overview</h1>
+        {/* Main Content Area */}
+        <div className="flex-1 flex flex-col min-h-screen">
+          {/* Mobile Top Bar */}
+          <div className="md:hidden bg-white border-b border-[#E8E0D0] px-6 py-4 flex items-center justify-between sticky top-0 z-40">
+            <h1 className="text-2xl font-bold tracking-wide text-[#2A3F35]">Dashboard</h1>
+            <button
+              onClick={() => setIsSidebarOpen(true)}
+              className="text-[#2A3F35] p-1"
+            >
+              <Menu size={28} />
+            </button>
+          </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="bg-white rounded-3xl p-6 border border-[#E8E0D0]">
-            <p className="text-[#2A3F35]/70 text-sm">Total Revenue</p>
-            <p className="text-4xl font-bold text-[#2A3F35] mt-2">₹{totalRevenue}</p>
-          </div>
-          <div className="bg-white rounded-3xl p-6 border border-[#E8E0D0]">
-            <p className="text-[#2A3F35]/70 text-sm">Active Listings</p>
-            <p className="text-4xl font-bold text-[#2A3F35] mt-2">{activeListings}</p>
-          </div>
-          <div className="bg-white rounded-3xl p-6 border border-[#E8E0D0]">
-            <p className="text-[#2A3F35]/70 text-sm">Total Orders</p>
-            <p className="text-4xl font-bold text-[#2A3F35] mt-2">{totalOrders}</p>
-          </div>
-          <div className="bg-white rounded-3xl p-6 border border-[#E8E0D0]">
-            <p className="text-[#2A3F35]/70 text-sm">Low Stock Items</p>
-            <p className="text-4xl font-bold text-[#D4AF37] mt-2">{lowStock}</p>
+          {/* Page Content */}
+          <div className="flex-1 p-6 md:p-10">
+            <h1 className="hidden md:block text-4xl font-bold text-[#2A3F35] mb-10">
+              Dashboard Overview
+            </h1>
+
+            {/* Stats Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="bg-white rounded-3xl p-6 border border-[#E8E0D0]">
+                <p className="text-[#2A3F35]/70 text-sm">Total Revenue</p>
+                <p className="text-4xl font-bold text-[#2A3F35] mt-2">₹{totalRevenue}</p>
+              </div>
+              <div className="bg-white rounded-3xl p-6 border border-[#E8E0D0]">
+                <p className="text-[#2A3F35]/70 text-sm">Active Listings</p>
+                <p className="text-4xl font-bold text-[#2A3F35] mt-2">{activeListings}</p>
+              </div>
+              <div className="bg-white rounded-3xl p-6 border border-[#E8E0D0]">
+                <p className="text-[#2A3F35]/70 text-sm">Total Orders</p>
+                <p className="text-4xl font-bold text-[#2A3F35] mt-2">{totalOrders}</p>
+              </div>
+              <div className="bg-white rounded-3xl p-6 border border-[#E8E0D0]">
+                <p className="text-[#2A3F35]/70 text-sm">Low Stock Items</p>
+                <p className="text-4xl font-bold text-[#D4AF37] mt-2">{lowStock}</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+
+      {/* Mobile Sidebar Overlay */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/60 z-50 md:hidden"
+          onClick={() => setIsSidebarOpen(false)}
+        >
+          <div 
+            className="bg-white w-72 h-full p-6 overflow-y-auto"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex justify-end mb-8">
+              <button 
+                onClick={() => setIsSidebarOpen(false)} 
+                className="text-[#2A3F35]"
+              >
+                <X size={32} />
+              </button>
+            </div>
+
+            <nav className="space-y-2">
+              <Link 
+                href="/admin/dashboard" 
+                className="flex items-center gap-3 px-4 py-3 bg-[#2A3F35] text-white rounded-2xl font-medium"
+                onClick={() => setIsSidebarOpen(false)}
+              >
+                📊 Overview
+              </Link>
+              <Link 
+                href="/admin/products" 
+                className="flex items-center gap-3 px-4 py-3 hover:bg-[#F9F6F0] rounded-2xl font-medium"
+                onClick={() => setIsSidebarOpen(false)}
+              >
+                📦 Products
+              </Link>
+              <Link 
+                href="/admin/orders" 
+                className="flex items-center gap-3 px-4 py-3 hover:bg-[#F9F6F0] rounded-2xl font-medium"
+                onClick={() => setIsSidebarOpen(false)}
+              >
+                📋 Orders
+              </Link>
+            </nav>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

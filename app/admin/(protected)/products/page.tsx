@@ -27,34 +27,19 @@ export default function AdminProducts() {
     files: [] as File[],
   });
 
-  // Fetch products initially
   const fetchProducts = async () => {
     const { data } = await supabase.from('products').select('*');
     setProducts(data || []);
   };
 
-  // Initial load + Real-time subscription
   useEffect(() => {
     fetchProducts();
 
-    // Real-time subscription for live updates (e.g., stock reduction after order)
     const channel = supabase
       .channel('products-realtime')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',           // Listen to INSERT, UPDATE, DELETE
-          schema: 'public',
-          table: 'products',
-        },
-        (payload) => {
-          console.log('Realtime change detected:', payload);
-          fetchProducts();     // Simple & reliable way
-        }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, fetchProducts)
       .subscribe();
 
-    // Cleanup on component unmount
     return () => {
       supabase.removeChannel(channel);
     };
@@ -122,7 +107,6 @@ export default function AdminProducts() {
 
     let newImageUrls: string[] = [];
 
-    // Upload new general images (if any selected)
     for (const file of formData.files) {
       const fileName = `media-${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
       const { error } = await supabase.storage.from('product-images').upload(fileName, file);
@@ -135,8 +119,7 @@ export default function AdminProducts() {
       newImageUrls.push(data.publicUrl);
     }
 
-    // Handle color images (if new tempFile selected)
-    const updatedColors = [];
+    const updatedColors: any[] = [];
     for (const color of formData.colors) {
       let imageUrl = color.image || '';
 
@@ -159,7 +142,6 @@ export default function AdminProducts() {
       });
     }
 
-    // Final payload - Keep old images if no new ones are uploaded
     const payload = {
       name: formData.name,
       slug: formData.slug.toLowerCase().replace(/\s+/g, '-'),
@@ -172,10 +154,7 @@ export default function AdminProducts() {
       is_new: formData.is_new,
       is_limited: formData.is_limited,
       colors: updatedColors,
-      // ✅ Fixed & Clear logic: Keep existing images unless new ones are uploaded
-      images: newImageUrls.length > 0 
-        ? newImageUrls 
-        : (editingProduct?.images || [])
+      images: newImageUrls.length > 0 ? newImageUrls : (editingProduct?.images || [])
     };
 
     const result = editingProduct
@@ -185,7 +164,6 @@ export default function AdminProducts() {
     if (!result.error) {
       toast.success(editingProduct ? "Product updated ✨" : "Product added ✨");
       setShowModal(false);
-      // No need to manually fetch here because realtime will handle it
     } else {
       toast.error(result.error.message || "Failed to save");
     }
@@ -197,116 +175,197 @@ export default function AdminProducts() {
     if (!confirm('Delete permanently?')) return;
     await supabase.from('products').delete().eq('id', id);
     toast.success('Product deleted');
-    // Realtime will automatically refresh the list
   };
 
   return (
     <>
       <Toaster position="top-center" />
+
       <div className="flex min-h-screen bg-[#F9F6F0]">
-        <div className={`fixed md:static inset-y-0 left-0 w-72 bg-white border-r border-[#E8E0D0] p-6 transform transition-transform z-50 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
-          <div className="md:hidden flex justify-end mb-8">
-            <button onClick={() => setIsSidebarOpen(false)} className="text-[#2A3F35] hover:text-[#D4AF37] transition-colors">
-              <X size={32} />
-            </button>
-          </div>
-          <nav className="space-y-2 mt-4 md:mt-0">
-            <Link href="/admin/dashboard" className="flex items-center gap-3 px-4 py-3 hover:bg-[#F9F6F0] rounded-2xl font-medium">📊 Overview</Link>
-            <Link href="/admin/products" className="flex items-center gap-3 px-4 py-3 bg-[#2A3F35] text-white rounded-2xl">📦 Products</Link>
-            <Link href="/admin/orders" className="flex items-center gap-3 px-4 py-3 hover:bg-[#F9F6F0] rounded-2xl font-medium">📋 Orders</Link>
+        {/* Sidebar - Desktop Only (matches Dashboard) */}
+        <div className="w-72 bg-white border-r border-[#E8E0D0] p-6 hidden md:block">
+          <nav className="space-y-2 mt-6">
+            <Link 
+              href="/admin/dashboard" 
+              className="flex items-center gap-3 px-4 py-3 hover:bg-[#F9F6F0] rounded-2xl font-medium"
+            >
+              📊 Overview
+            </Link>
+            <Link 
+              href="/admin/products" 
+              className="flex items-center gap-3 px-4 py-3 bg-[#2A3F35] text-white rounded-2xl font-medium"
+            >
+              📦 Products
+            </Link>
+            <Link 
+              href="/admin/orders" 
+              className="flex items-center gap-3 px-4 py-3 hover:bg-[#F9F6F0] rounded-2xl font-medium"
+            >
+              📋 Orders
+            </Link>
           </nav>
         </div>
 
-        <div className="flex-1 p-6 md:p-10">
-          <button onClick={() => setIsSidebarOpen(true)} className="md:hidden mb-6 text-[#2A3F35]">
-            <Menu size={28} />
-          </button>
-
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
-            <h1 className="text-3xl md:text-4xl font-bold tracking-wide">Product Management</h1>
-            <button onClick={() => openModal()} className="bg-[#2A3F35] hover:bg-[#D4AF37] text-white px-8 py-3.5 rounded-full flex items-center gap-3 transition-all font-medium">
-              <Plus size={20} /> Add New Product
+        {/* Main Content */}
+        <div className="flex-1 flex flex-col min-h-screen">
+          {/* Mobile Top Bar */}
+          <div className="md:hidden bg-white border-b border-[#E8E0D0] px-6 py-4 flex items-center justify-between sticky top-0 z-40">
+            <h1 className="text-2xl font-bold tracking-wide text-[#2A3F35]">Product Management</h1>
+            <button
+              onClick={() => setIsSidebarOpen(true)}
+              className="text-[#2A3F35] p-1"
+            >
+              <Menu size={28} />
             </button>
           </div>
 
-          {/* Mobile Cards */}
-          <div className="grid grid-cols-1 md:hidden gap-6">
-            {products.map((p) => (
-              <div key={p.id} className="bg-white rounded-3xl border border-[#E8E0D0] p-6">
-                <div className="flex gap-4">
-                  <img src={p.images?.[0] || "/hero-bg.jpg"} alt={p.name} className="w-24 h-24 object-cover rounded-2xl" />
-                  <div className="flex-1">
-                    <h3 className="font-medium text-lg">{p.name}</h3>
-                    <p className="text-[#D4AF37] text-sm">{p.category}</p>
-                    <p className="text-2xl font-bold mt-1">₹{p.price}</p>
-                    <div className="text-xs text-[#2A3F35]/70 mt-3">
-                      Stock: {p.stock} • {p.is_new && "New"} {p.is_limited && "Limited"}
+          {/* Page Content */}
+          <div className="flex-1 p-6 md:p-10">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
+              <h1 className="hidden md:block text-3xl md:text-4xl font-bold tracking-wide">
+                Product Management
+              </h1>
+              <button 
+                onClick={() => openModal()} 
+                className="bg-[#2A3F35] hover:bg-[#D4AF37] text-white px-8 py-3.5 rounded-full flex items-center gap-3 transition-all font-medium"
+              >
+                <Plus size={20} /> Add New Product
+              </button>
+            </div>
+
+            {/* Mobile Cards */}
+            <div className="grid grid-cols-1 md:hidden gap-6">
+              {products.map((p) => (
+                <div key={p.id} className="bg-white rounded-3xl border border-[#E8E0D0] p-6">
+                  <div className="flex gap-4">
+                    <img src={p.images?.[0] || "/hero-bg.jpg"} alt={p.name} className="w-24 h-24 object-cover rounded-2xl" />
+                    <div className="flex-1">
+                      <h3 className="font-medium text-lg">{p.name}</h3>
+                      <p className="text-[#D4AF37] text-sm">{p.category}</p>
+                      <p className="text-2xl font-bold mt-1">₹{p.price}</p>
+                      <div className="text-xs text-[#2A3F35]/70 mt-3">
+                        Stock: {p.stock} • {p.is_new && "New"} {p.is_limited && "Limited"}
+                      </div>
                     </div>
                   </div>
+                  <div className="flex gap-3 mt-6">
+                    <button 
+                      onClick={() => openModal(p)} 
+                      className="flex-1 border border-[#E8E0D0] py-3 rounded-2xl flex items-center justify-center gap-2 text-sm"
+                    >
+                      <Edit2 size={18} /> Edit
+                    </button>
+                    <button 
+                      onClick={() => deleteProduct(p.id)} 
+                      className="flex-1 border border-red-200 text-red-500 py-3 rounded-2xl flex items-center justify-center gap-2 text-sm"
+                    >
+                      <Trash2 size={18} /> Delete
+                    </button>
+                  </div>
                 </div>
-                <div className="flex gap-3 mt-6">
-                  <button onClick={() => openModal(p)} className="flex-1 border border-[#E8E0D0] py-3 rounded-2xl flex items-center justify-center gap-2 text-sm">
-                    <Edit2 size={18} /> Edit
-                  </button>
-                  <button onClick={() => deleteProduct(p.id)} className="flex-1 border border-red-200 text-red-500 py-3 rounded-2xl flex items-center justify-center gap-2 text-sm">
-                    <Trash2 size={18} /> Delete
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
 
-          {/* Desktop Table */}
-          <div className="hidden md:block bg-white rounded-3xl border border-[#E8E0D0] overflow-x-auto">
-            <table className="w-full min-w-[900px]">
-              <thead className="bg-[#F9F6F0]">
-                <tr>
-                  <th className="pl-10 py-6 text-left">Media</th>
-                  <th>Product Name</th>
-                  <th>Category</th>
-                  <th>Stock</th>
-                  <th>Price</th>
-                  <th>New</th>
-                  <th>Limited</th>
-                  <th className="text-center pr-10">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {products.map((p) => (
-                  <tr key={p.id} className="border-b hover:bg-[#F9F6F0]/60">
-                    <td className="pl-10 py-6">
-                      {p.images?.[0] ? (
-                        <img src={p.images[0]} alt={p.name} width={80} height={80} className="rounded-2xl object-cover" />
-                      ) : (
-                        <div className="w-20 h-20 bg-[#F9F6F0] rounded-2xl" />
-                      )}
-                    </td>
-                    <td className="font-medium">{p.name}</td>
-                    <td>{p.category}</td>
-                    <td>{p.stock}</td>
-                    <td>₹{p.price}</td>
-                    <td className="text-center">{p.is_new ? '✅' : ''}</td>
-                    <td className="text-center">{p.is_limited ? '✅' : ''}</td>
-                    <td className="pr-10">
-                      <div className="flex items-center justify-center gap-5">
-                        <button onClick={() => openModal(p)}><Edit2 size={19} /></button>
-                        <button onClick={() => deleteProduct(p.id)} className="text-red-500"><Trash2 size={19} /></button>
-                      </div>
-                    </td>
+            {/* Desktop Table */}
+            <div className="hidden md:block bg-white rounded-3xl border border-[#E8E0D0] overflow-x-auto">
+              <table className="w-full min-w-[900px]">
+                <thead className="bg-[#F9F6F0]">
+                  <tr>
+                    <th className="pl-10 py-6 text-left">Media</th>
+                    <th>Product Name</th>
+                    <th>Category</th>
+                    <th>Stock</th>
+                    <th>Price</th>
+                    <th>New</th>
+                    <th>Limited</th>
+                    <th className="text-center pr-10">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {products.map((p) => (
+                    <tr key={p.id} className="border-b hover:bg-[#F9F6F0]/60">
+                      <td className="pl-10 py-6">
+                        {p.images?.[0] ? (
+                          <img src={p.images[0]} alt={p.name} width={80} height={80} className="rounded-2xl object-cover" />
+                        ) : (
+                          <div className="w-20 h-20 bg-[#F9F6F0] rounded-2xl" />
+                        )}
+                      </td>
+                      <td className="font-medium">{p.name}</td>
+                      <td>{p.category}</td>
+                      <td>{p.stock}</td>
+                      <td>₹{p.price}</td>
+                      <td className="text-center">{p.is_new ? '✅' : ''}</td>
+                      <td className="text-center">{p.is_limited ? '✅' : ''}</td>
+                      <td className="pr-10">
+                        <div className="flex items-center justify-center gap-5">
+                          <button onClick={() => openModal(p)}><Edit2 size={19} /></button>
+                          <button onClick={() => deleteProduct(p.id)} className="text-red-500"><Trash2 size={19} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Modal */}
+      {/* Mobile Sidebar Overlay */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/60 z-50 md:hidden"
+          onClick={() => setIsSidebarOpen(false)}
+        >
+          <div 
+            className="bg-white w-72 h-full p-6 overflow-y-auto"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex justify-end mb-8">
+              <button 
+                onClick={() => setIsSidebarOpen(false)} 
+                className="text-[#2A3F35]"
+              >
+                <X size={32} />
+              </button>
+            </div>
+
+            <nav className="space-y-2">
+              <Link 
+                href="/admin/dashboard" 
+                className="flex items-center gap-3 px-4 py-3 hover:bg-[#F9F6F0] rounded-2xl font-medium"
+                onClick={() => setIsSidebarOpen(false)}
+              >
+                📊 Overview
+              </Link>
+              <Link 
+                href="/admin/products" 
+                className="flex items-center gap-3 px-4 py-3 bg-[#2A3F35] text-white rounded-2xl font-medium"
+                onClick={() => setIsSidebarOpen(false)}
+              >
+                📦 Products
+              </Link>
+              <Link 
+                href="/admin/orders" 
+                className="flex items-center gap-3 px-4 py-3 hover:bg-[#F9F6F0] rounded-2xl font-medium"
+                onClick={() => setIsSidebarOpen(false)}
+              >
+                📋 Orders
+              </Link>
+            </nav>
+          </div>
+        </div>
+      )}
+
+      {/* Product Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[100] p-4">
           <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
             <div className="p-6 border-b flex justify-between items-center">
-              <h2 className="text-2xl font-bold tracking-tight">{editingProduct ? 'Edit Product' : 'Add New Product'}</h2>
+              <h2 className="text-2xl font-bold tracking-tight">
+                {editingProduct ? 'Edit Product' : 'Add New Product'}
+              </h2>
               <button onClick={() => setShowModal(false)} className="text-[#2A3F35]"><X size={28} /></button>
             </div>
 
@@ -414,7 +473,7 @@ export default function AdminProducts() {
               <button 
                 onClick={saveProduct} 
                 disabled={uploading} 
-                className="w-full bg-[#2A3F35] text-white py-2 rounded-2xl font-medium hover:bg-[#D4AF37] transition-all disabled:opacity-70"
+                className="w-full bg-[#2A3F35] text-white py-3 rounded-2xl font-medium hover:bg-[#D4AF37] transition-all disabled:opacity-70"
               >
                 {uploading ? "Saving..." : editingProduct ? "Update Product" : "Add Product"}
               </button>
