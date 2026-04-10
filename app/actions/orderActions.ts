@@ -10,43 +10,31 @@ export async function confirmPaymentServerAction(formData: FormData) {
 
     try {
       items = JSON.parse(formData.get('items') as string || '[]');
-    } catch (parseErr) {
-      console.error("JSON Parse Error:", parseErr);
+    } catch {
       return { success: false, error: "Invalid cart data" };
     }
-
-    console.log("=== confirmPaymentServerAction START ===");
-    console.log("Transaction ID:", transactionId);
-    console.log("Total:", total);
-    console.log("Items Count:", items.length);
 
     if (!transactionId?.trim() || !items?.length || !total) {
       return { success: false, error: "Invalid data provided" };
     }
 
     const supabase = await createSupabaseServer();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
 
-    if (authError || !user) {
-      console.error("Auth Error:", authError);
-      return { success: false, error: "User not authenticated. Please login again." };
+    if (!user) {
+      return { success: false, error: "User not authenticated" };
     }
 
-    console.log("User authenticated:", user.id, user.email);
-
-    // Idempotency check
-    const { data: existingOrder } = await supabase
+    // Idempotency
+    const { data: existing } = await supabase
       .from('orders')
       .select('id')
       .eq('transaction_id', transactionId.trim())
       .maybeSingle();
 
-    if (existingOrder) {
-      console.log("Order already exists with this transaction ID");
-      return { success: true };
-    }
+    if (existing) return { success: true };
 
-    // ==================== STOCK DEDUCTION ====================
+    // Stock deduction with clear logging
     for (const item of items) {
       let success = false;
 
@@ -56,28 +44,24 @@ export async function confirmPaymentServerAction(formData: FormData) {
           p_color: item.color,
           p_qty: item.qty,
         });
-        if (error) {
-          console.error("COLOR STOCK ERROR:", error);
-          return { success: false, error: `Stock update failed for ${item.name} (${item.color})` };
-        }
-        success = data;
+        success = data === true;
+        if (error) console.error("Color stock error:", error);
       } else {
         const { data, error } = await supabase.rpc('decrement_stock', {
           p_product_id: item.id,
           p_qty: item.qty,
         });
-        if (error) {
-          console.error("SIMPLE STOCK ERROR:", error);
-          return { success: false, error: `Stock update failed for ${item.name}` };
-        }
-        success = data;
+        success = data === true;
+        if (error) console.error("Stock error:", error);
       }
 
       if (!success) {
-        return { success: false, error: `Not enough stock for ${item.name}` };
+        return {
+          success: false,
+          error: `Not enough stock for ${item.name}`
+        };
       }
     }
-    // ========================================================
 
     // Create order
     const { data: newOrder, error } = await supabase
@@ -95,11 +79,9 @@ export async function confirmPaymentServerAction(formData: FormData) {
       .single();
 
     if (error || !newOrder) {
-      console.error("ORDER INSERT ERROR:", error);
+      console.error("Order insert error:", error);
       return { success: false, error: "Failed to create order" };
     }
-
-    console.log("Order created successfully:", newOrder.order_number);
 
     // Clear cart
     await supabase.from('carts').delete().eq('user_id', user.id);
@@ -108,20 +90,20 @@ export async function confirmPaymentServerAction(formData: FormData) {
     Promise.all([
       sendOrderEmail(
         "ziwarajewels@gmail.com",
-        `New Order #${newOrder.order_number} - Please Confirm`,
-        `<h2>New Order Received</h2><p><strong>Order ID:</strong> ${newOrder.order_number}</p><p><strong>Transaction ID:</strong> ${transactionId}</p><p><strong>Total:</strong> ₹${total}</p>`
+        `New Order #${newOrder.order_number}`,
+        `<h2>New Order Received</h2><p>Order ID: ${newOrder.order_number}</p><p>Transaction: ${transactionId}</p><p>Total: ₹${total}</p>`
       ),
       sendOrderEmail(
         user.email!,
         `Order Placed - Ziwara #${newOrder.order_number}`,
-        `<h2>Thank you!</h2><p>Your order #${newOrder.order_number} has been placed.</p><p>Status: Waiting for Payment Confirmation (up to 12 hours)</p><p>For queries: ziwarajewels@gmail.com</p>`
+        `<h2>Thank you!</h2><p>Your order #${newOrder.order_number} has been placed.</p><p>Status: Waiting for confirmation</p>`
       )
-    ]).catch(err => console.error("Email failed:", err));
+    ]).catch(console.error);
 
     return { success: true };
 
   } catch (err: any) {
-    console.error("SERVER ACTION CRASH:", err);
+    console.error("confirmPaymentServerAction error:", err);
     return { success: false, error: "Server error occurred" };
   }
 }

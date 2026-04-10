@@ -155,6 +155,16 @@ export default function CartPage() {
 
     setIsProcessing(true);
 
+    // Final stock validation (prevents race conditions)
+    for (const item of cartItems) {
+      const available = await getAvailableQty(item);
+      if (item.qty > available) {
+        toast.error(`Only ${available} left for "${item.name}". Please reduce quantity or remove it.`);
+        setIsProcessing(false);
+        return;
+      }
+    }
+
     const formData = new FormData();
     formData.append('transactionId', transactionId.trim());
     formData.append('total', total.toString());
@@ -164,14 +174,13 @@ export default function CartPage() {
       const result = await confirmPaymentServerAction(formData);
 
       if (result.success) {
-        toast.success("Order placed successfully! ✨");
+        toast.success("Order placed successfully! ✨ Waiting for admin confirmation.");
         setStep('cart');
         setCartItems([]);
         setTransactionId('');
         window.dispatchEvent(new Event('orderPlaced'));
       } else {
         toast.error(result.error || "Failed to place order. Please try again.");
-        console.error("Server action returned error:", result.error);
       }
     } catch (err: any) {
       console.error("Order placement failed:", err);
