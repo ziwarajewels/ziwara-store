@@ -6,17 +6,33 @@ export async function confirmPaymentServerAction(formData: FormData) {
   try {
     const transactionId = formData.get('transactionId') as string;
     const total = Number(formData.get('total'));
-    const items = JSON.parse(formData.get('items') as string);
+    let items: any[] = [];
+
+    try {
+      items = JSON.parse(formData.get('items') as string || '[]');
+    } catch (parseErr) {
+      console.error("JSON Parse Error:", parseErr);
+      return { success: false, error: "Invalid cart data" };
+    }
+
+    console.log("=== confirmPaymentServerAction START ===");
+    console.log("Transaction ID:", transactionId);
+    console.log("Total:", total);
+    console.log("Items Count:", items.length);
 
     if (!transactionId?.trim() || !items?.length || !total) {
-      return { success: false, error: "Invalid data" };
+      return { success: false, error: "Invalid data provided" };
     }
 
     const supabase = await createSupabaseServer();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return { success: false, error: "User not logged in" };
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      console.error("Auth Error:", authError);
+      return { success: false, error: "User not authenticated. Please login again." };
     }
+
+    console.log("User authenticated:", user.id, user.email);
 
     // Idempotency check
     const { data: existingOrder } = await supabase
@@ -25,14 +41,16 @@ export async function confirmPaymentServerAction(formData: FormData) {
       .eq('transaction_id', transactionId.trim())
       .maybeSingle();
 
-    if (existingOrder) return { success: true };
+    if (existingOrder) {
+      console.log("Order already exists with this transaction ID");
+      return { success: true };
+    }
 
-    // ==================== ATOMIC STOCK DEDUCTION (Industry Grade) ====================
+    // ==================== STOCK DEDUCTION ====================
     for (const item of items) {
       let success = false;
 
       if (item.color) {
-        // Color variant stock
         const { data, error } = await supabase.rpc('decrement_color_stock', {
           p_product_id: item.id,
           p_color: item.color,
@@ -40,18 +58,17 @@ export async function confirmPaymentServerAction(formData: FormData) {
         });
         if (error) {
           console.error("COLOR STOCK ERROR:", error);
-          return { success: false, error: "Stock update failed" };
+          return { success: false, error: `Stock update failed for ${item.name} (${item.color})` };
         }
         success = data;
       } else {
-        // Simple stock
         const { data, error } = await supabase.rpc('decrement_stock', {
           p_product_id: item.id,
           p_qty: item.qty,
         });
         if (error) {
-          console.error("STOCK ERROR:", error);
-          return { success: false, error: "Stock update failed" };
+          console.error("SIMPLE STOCK ERROR:", error);
+          return { success: false, error: `Stock update failed for ${item.name}` };
         }
         success = data;
       }
@@ -60,7 +77,7 @@ export async function confirmPaymentServerAction(formData: FormData) {
         return { success: false, error: `Not enough stock for ${item.name}` };
       }
     }
-    // =============================================================================
+    // ========================================================
 
     // Create order
     const { data: newOrder, error } = await supabase
@@ -82,6 +99,8 @@ export async function confirmPaymentServerAction(formData: FormData) {
       return { success: false, error: "Failed to create order" };
     }
 
+    console.log("Order created successfully:", newOrder.order_number);
+
     // Clear cart
     await supabase.from('carts').delete().eq('user_id', user.id);
 
@@ -100,9 +119,10 @@ export async function confirmPaymentServerAction(formData: FormData) {
     ]).catch(err => console.error("Email failed:", err));
 
     return { success: true };
+
   } catch (err: any) {
     console.error("SERVER ACTION CRASH:", err);
-    return { success: false, error: "Server error" };
+    return { success: false, error: "Server error occurred" };
   }
 }
 
@@ -118,7 +138,7 @@ export async function confirmOrderServerAction(orderId: string) {
     if (!order) return { success: false, error: "Order not found" };
 
     let recipientEmail = order.user_email;
-    if (!recipientEmail) {
+    if (!recipientEmail && order.user_id) {
       const { data: userData } = await supabase.auth.admin.getUserById(order.user_id);
       recipientEmail = userData?.user?.email || "ziwarajewels@gmail.com";
     }
@@ -128,7 +148,10 @@ export async function confirmOrderServerAction(orderId: string) {
       .update({ status: 'CONFIRMED' })
       .eq('id', orderId);
 
-    if (error) return { success: false };
+    if (error) {
+      console.error("Status update error:", error);
+      return { success: false };
+    }
 
     sendOrderEmail(
       recipientEmail,

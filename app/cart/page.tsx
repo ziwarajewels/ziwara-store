@@ -144,25 +144,38 @@ export default function CartPage() {
   const upiLink = `upi://pay?pa=${upiId}&pn=Ziwara&am=${total}&cu=INR&tn=Order Payment`;
 
   const handleConfirmPayment = async () => {
-    if (!transactionId.trim() || isProcessing) return;
+    if (!transactionId.trim()) {
+      toast.error("Please enter Transaction ID / UPI Reference");
+      return;
+    }
+    if (isProcessing || !userId) {
+      toast.error("Please login again and try");
+      return;
+    }
+
     setIsProcessing(true);
 
     const formData = new FormData();
-    formData.append('transactionId', transactionId);
+    formData.append('transactionId', transactionId.trim());
     formData.append('total', total.toString());
     formData.append('items', JSON.stringify(cartItems));
 
     try {
       const result = await confirmPaymentServerAction(formData);
+
       if (result.success) {
-        toast.success("Order placed! Waiting for confirmation.");
+        toast.success("Order placed successfully! ✨");
         setStep('cart');
         setCartItems([]);
         setTransactionId('');
         window.dispatchEvent(new Event('orderPlaced'));
+      } else {
+        toast.error(result.error || "Failed to place order. Please try again.");
+        console.error("Server action returned error:", result.error);
       }
     } catch (err: any) {
-      toast.error(err.message || "Failed to place order");
+      console.error("Order placement failed:", err);
+      toast.error("Something went wrong. Please try again.");
     } finally {
       setIsProcessing(false);
     }
