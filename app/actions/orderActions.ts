@@ -1,4 +1,5 @@
 'use server';
+
 import { createSupabaseServer } from '@/lib/supabaseServer';
 import { sendOrderEmail } from '@/lib/email';
 
@@ -34,7 +35,7 @@ export async function confirmPaymentServerAction(formData: FormData) {
 
     if (existing) return { success: true };
 
-    // Stock deduction with clear logging
+    // Stock deduction
     for (const item of items) {
       let success = false;
 
@@ -56,10 +57,7 @@ export async function confirmPaymentServerAction(formData: FormData) {
       }
 
       if (!success) {
-        return {
-          success: false,
-          error: `Not enough stock for ${item.name}`
-        };
+        return { success: false, error: `Not enough stock for ${item.name}` };
       }
     }
 
@@ -86,19 +84,25 @@ export async function confirmPaymentServerAction(formData: FormData) {
     // Clear cart
     await supabase.from('carts').delete().eq('user_id', user.id);
 
-    // Send emails (non-blocking)
-    Promise.all([
-      sendOrderEmail(
-        "ziwarajewels@gmail.com",
-        `New Order #${newOrder.order_number}`,
-        `<h2>New Order Received</h2><p>Order ID: ${newOrder.order_number}</p><p>Transaction: ${transactionId}</p><p>Total: ₹${total}</p>`
-      ),
-      sendOrderEmail(
-        user.email!,
-        `Order Placed - Ziwara #${newOrder.order_number}`,
-        `<h2>Thank you!</h2><p>Your order #${newOrder.order_number} has been placed.</p><p>Status: Waiting for confirmation</p>`
-      )
-    ]).catch(console.error);
+    // ==================== RELIABLE EMAIL SENDING ====================
+    try {
+      await Promise.allSettled([
+        sendOrderEmail(
+          "ziwarajewels@gmail.com",
+          `New Order #${newOrder.order_number}`,
+          `<h2>New Order Received</h2><p>Order ID: ${newOrder.order_number}</p><p>Transaction: ${transactionId}</p><p>Total: ₹${total}</p>`
+        ),
+        sendOrderEmail(
+          user.email!,
+          `Order Placed - Ziwara #${newOrder.order_number}`,
+          `<h2>Thank you!</h2><p>Your order #${newOrder.order_number} has been placed.</p><p>Status: Waiting for confirmation</p>`
+        )
+      ]);
+      console.log(`✅ Emails triggered for order ${newOrder.order_number}`);
+    } catch (emailErr) {
+      console.error(`⚠️ Non-critical email failure for order ${newOrder.order_number}:`, emailErr);
+    }
+    // =================================================================
 
     return { success: true };
 
@@ -135,11 +139,18 @@ export async function confirmOrderServerAction(orderId: string) {
       return { success: false };
     }
 
-    sendOrderEmail(
-      recipientEmail,
-      `Your Ziwara Order #${order.order_number} is Confirmed`,
-      `<h2>Order Confirmed!</h2><p>Your order has been confirmed.</p><p>It will reach you within 3 days.</p><p>For queries: ziwarajewels@gmail.com</p>`
-    ).catch(err => console.error("Email failed:", err));
+    // ==================== RELIABLE EMAIL SENDING ====================
+    try {
+      await sendOrderEmail(
+        recipientEmail,
+        `Your Ziwara Order #${order.order_number} is Confirmed`,
+        `<h2>Order Confirmed!</h2><p>Your order has been confirmed.</p><p>It will reach you within 3 days.</p><p>For queries: ziwarajewels@gmail.com</p>`
+      );
+      console.log(`✅ Confirmation email sent for order ${order.order_number}`);
+    } catch (emailErr) {
+      console.error(`⚠️ Confirmation email failed for order ${order.order_number}:`, emailErr);
+    }
+    // =================================================================
 
     return { success: true };
   } catch (err) {
