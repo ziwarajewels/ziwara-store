@@ -16,7 +16,6 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
   const [addedToCart, setAddedToCart] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Fetch product function
   const fetchProduct = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
@@ -39,11 +38,9 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
     setLoading(false);
   }, [id]);
 
-  // Initial fetch + realtime subscription
   useEffect(() => {
     fetchProduct();
 
-    // Realtime subscription
     const channel = supabase
       .channel(`product-detail-${id}`)
       .on(
@@ -55,28 +52,33 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
           filter: `id=eq.${id}`
         },
         (payload) => {
-          console.log("Realtime product update received:", payload.new);
-          setProduct(payload.new);
+          // ✅ FIX: Proper type assertion
+          const updatedProduct = payload.new as any;
 
-          // Safely update selected color if it still exists
-          if (payload.new?.colors?.length > 0 && selectedColor) {
-            const colorStillExists = payload.new.colors.find((c: any) => c.name === selectedColor.name);
-            if (!colorStillExists) {
-              setSelectedColor(payload.new.colors[0]);
+          if (updatedProduct && typeof updatedProduct === 'object') {
+            setProduct(updatedProduct);
+
+            if (Array.isArray(updatedProduct.colors) && updatedProduct.colors.length > 0) {
+              if (selectedColor) {
+                const colorStillExists = updatedProduct.colors.find(
+                  (c: any) => c.name === selectedColor.name
+                );
+                if (!colorStillExists) {
+                  setSelectedColor(updatedProduct.colors[0]);
+                }
+              } else {
+                setSelectedColor(updatedProduct.colors[0]);
+              }
             }
           }
         }
       )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIPTION_ERROR') {
-          console.warn("Realtime subscription error - falling back to polling");
-        }
-      });
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [id, fetchProduct, selectedColor]);
+  }, [id, fetchProduct]);
 
   useEffect(() => {
     setSelectedImageIndex(0);
@@ -84,7 +86,7 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
 
   const getAvailableQty = () => {
     if (!product) return 0;
-    if (product.colors?.length > 0 && selectedColor) {
+    if (Array.isArray(product.colors) && product.colors.length > 0 && selectedColor) {
       const color = product.colors.find((c: any) => c.name === selectedColor.name);
       return color?.qty ?? 0;
     }
@@ -179,7 +181,7 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
     ? [selectedColor.image, ...(product.images || []).filter((img: string) => img !== selectedColor.image)]
     : product.images?.length ? product.images : ['/hero-bg.jpg'];
 
-  const colors = product.colors || [];
+  const colors = Array.isArray(product.colors) ? product.colors : [];
 
   return (
     <>
@@ -187,7 +189,6 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
       <div className="max-w-6xl mx-auto px-4 md:px-6 py-8 md:py-16">
         <div className="flex flex-col lg:flex-row gap-10 lg:gap-16">
 
-          {/* IMAGE SECTION */}
           <div className="lg:w-5/12">
             <div className="aspect-square bg-[#F9F6F0] rounded-3xl overflow-hidden shadow-sm">
               <img 
@@ -210,14 +211,12 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
             </div>
           </div>
 
-          {/* DETAILS SECTION */}
           <div className="lg:w-7/12">
             <div className="mb-8">
               <h1 className="text-4xl md:text-5xl font-bold tracking-tight mt-2 leading-none">
                 {product.name}
               </h1>
 
-              {/* Live Price with Discount */}
               <div className="mt-4 flex items-baseline gap-3">
                 {hasDiscount ? (
                   <>
@@ -236,7 +235,6 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
               </p>
             </div>
 
-            {/* Color Variants */}
             {colors.length > 0 && (
               <div className="mt-10">
                 <p className="text-sm font-medium text-[#2A3F35]/70 mb-3">Select Color</p>
@@ -267,7 +265,6 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
               </div>
             )}
 
-            {/* Specifications */}
             <div className="mt-12 border-t border-[#E8E0D0] pt-10">
               <h3 className="font-semibold text-xl mb-6 flex items-center gap-2">
                 <Ruler className="w-5 h-5" /> Details & Specifications

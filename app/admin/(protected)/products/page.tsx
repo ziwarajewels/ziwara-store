@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { Plus, Edit2, Trash2, X, Menu, PlusCircle } from 'lucide-react';
 import Link from 'next/link';
@@ -28,10 +28,13 @@ export default function AdminProducts() {
     files: [] as File[],
   });
 
-  const fetchProducts = async () => {
-    const { data } = await supabase.from('products').select('*').order('created_at', { ascending: false });
+  const fetchProducts = useCallback(async () => {
+    const { data } = await supabase
+      .from('products')
+      .select('*')
+      .order('created_at', { ascending: false });
     setProducts(data || []);
-  };
+  }, []);
 
   useEffect(() => {
     fetchProducts();
@@ -41,8 +44,10 @@ export default function AdminProducts() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, fetchProducts)
       .subscribe();
 
-    return () => supabase.removeChannel(channel);
-  }, []);
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchProducts]);
 
   const openModal = (product?: any) => {
     if (product) {
@@ -186,7 +191,7 @@ export default function AdminProducts() {
       <Toaster position="top-center" />
 
       <div className="flex min-h-screen bg-[#F9F6F0]">
-        {/* Desktop Sidebar - Consistent with AdminDashboard */}
+        {/* Desktop Sidebar */}
         <div className="w-72 bg-white border-r border-[#E8E0D0] p-6 hidden md:block">
           <nav className="space-y-2 mt-8">
             <Link href="/admin/dashboard" className="flex items-center gap-3 px-4 py-3 hover:bg-[#F9F6F0] rounded-2xl font-medium">
@@ -316,7 +321,7 @@ export default function AdminProducts() {
         </div>
       </div>
 
-      {/* Mobile Sidebar Overlay - Same as AdminDashboard */}
+      {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
         <div 
           className="fixed inset-0 bg-black/60 z-50 md:hidden"
@@ -371,7 +376,7 @@ export default function AdminProducts() {
             </div>
 
             <div className="p-8 overflow-y-auto max-h-[calc(92vh-130px)] space-y-8">
-              {/* All your form fields - unchanged */}
+              {/* All your form fields remain exactly the same */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium mb-2">Product Name</label>
@@ -486,7 +491,7 @@ export default function AdminProducts() {
                 </label>
               </div>
 
-              {/* Color Variants */}
+              {/* Color Variants - unchanged */}
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-sm font-medium text-[#2A3F35]">Color Variants</label>

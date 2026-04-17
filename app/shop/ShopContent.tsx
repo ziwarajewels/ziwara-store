@@ -34,21 +34,28 @@ export default function ShopContent() {
     fetchProducts();
   }, []);
 
-  // Realtime updates
+  // ✅ FIXED REALTIME (ONLY CHANGE HERE)
   useEffect(() => {
     const channel = supabase
       .channel('shop-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => {
-        supabase
-          .from('products')
-          .select('*')
-          .eq('is_limited', false)
-          .order('created_at', { ascending: false })
-          .then(({ data }) => setProducts(data || []));
-      })
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'products' },
+        () => {
+          supabase
+            .from('products')
+            .select('*')
+            .eq('is_limited', false)
+            .order('created_at', { ascending: false })
+            .then(({ data }) => setProducts(data || []));
+        }
+      )
       .subscribe();
 
-    return () => supabase.removeChannel(channel);
+    // ✅ IMPORTANT FIX: wrap in {} so no Promise is returned
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const maxPrice = useMemo(() => {
@@ -68,7 +75,6 @@ export default function ShopContent() {
   const filteredProducts = useMemo(() => {
     let result = [...products];
 
-    // Filters
     if (selectedCategories.length > 0) result = result.filter(p => selectedCategories.includes(p.category));
     if (selectedMaterials.length > 0) result = result.filter(p => selectedMaterials.includes(p.material || ''));
     if (selectedGemstones.length > 0) result = result.filter(p => selectedGemstones.includes(p.gemstone || ''));
@@ -86,13 +92,10 @@ export default function ShopContent() {
       );
     }
 
-    // Special sorting for Newest Arrivals
     if (sortType === 'newest') {
       result.sort((a, b) => {
-        // First priority: is_new = true comes first
         if (a.is_new && !b.is_new) return -1;
         if (!a.is_new && b.is_new) return 1;
-        // Then sort by creation date
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       });
     } else if (sortType === 'price-low') {

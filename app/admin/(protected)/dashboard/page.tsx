@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import Link from 'next/link';
 import { Menu, X, TrendingUp, Package, ShoppingCart, AlertTriangle, Clock, Users, AlertCircle } from 'lucide-react';
@@ -24,15 +24,14 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Toggle for Sales Chart
   const [timeRange, setTimeRange] = useState<'7d' | '30d'>('7d');
 
-  const fetchAllStats = async () => {
+  const fetchAllStats = useCallback(async () => {
     try {
       const { data: products } = await supabase.from('products').select('*');
       const { data: orders } = await supabase
         .from('orders')
-        .select('id, total, status, created_at, user_id')
+        .select('id, total, status, created_at, user_id, items')
         .order('created_at', { ascending: false });
 
       const { data: carts } = await supabase.from('carts').select('user_id, updated_at');
@@ -42,14 +41,13 @@ export default function AdminDashboard() {
       const zero = products?.filter((p: any) => p.stock === 0).length || 0;
 
       const revenue = orders?.reduce((sum: number, o: any) => {
-        return (o.status === 'CONFIRMED' || o.status === 'DELIVERED') 
-          ? sum + Number(o.total || 0) 
+        return (o.status === 'CONFIRMED' || o.status === 'DELIVERED')
+          ? sum + Number(o.total || 0)
           : sum;
       }, 0) || 0;
 
       const totalOrd = orders?.length || 0;
 
-      // Abandoned Carts = All carts
       const abandonedCarts = carts || [];
 
       const abandonedDetails = await Promise.all(
@@ -72,10 +70,12 @@ export default function AdminDashboard() {
       const recent = orders?.slice(0, 5) || [];
 
       const productSales: any = {};
-      orders?.forEach(order => {
+      orders?.forEach((order: any) => {
         if (order.items && Array.isArray(order.items)) {
           order.items.forEach((item: any) => {
-            if (item.id) productSales[item.id] = (productSales[item.id] || 0) + (item.qty || 1);
+            if (item.id) {
+              productSales[item.id] = (productSales[item.id] || 0) + (item.qty || 1);
+            }
           });
         }
       });
@@ -92,7 +92,6 @@ export default function AdminDashboard() {
       const lowItems = products?.filter((p: any) => p.stock > 0 && p.stock < 5) || [];
       const zeroItems = products?.filter((p: any) => p.stock === 0) || [];
 
-      // ==================== SALES TREND ====================
       const days = timeRange === '7d' ? 7 : 30;
       const salesTrend = [];
       const now = new Date();
@@ -102,15 +101,15 @@ export default function AdminDashboard() {
         date.setDate(date.getDate() - i);
         const dateStr = date.toISOString().split('T')[0];
 
-        const dayRevenue = orders?.filter(o => {
+        const dayRevenue = orders?.filter((o: any) => {
           const orderDate = o.created_at.split('T')[0];
           return orderDate === dateStr && (o.status === 'CONFIRMED' || o.status === 'DELIVERED');
         }).reduce((sum, o) => sum + Number(o.total || 0), 0) || 0;
 
         salesTrend.push({
-          day: timeRange === '7d' 
-            ? date.toLocaleDateString('en-IN', { weekday: 'short' })   // Mon, Tue...
-            : date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }), // 1 Apr, 2 Apr...
+          day: timeRange === '7d'
+            ? date.toLocaleDateString('en-IN', { weekday: 'short' })
+            : date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
           revenue: dayRevenue,
         });
       }
@@ -132,22 +131,13 @@ export default function AdminDashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [timeRange]);
 
   useEffect(() => {
     fetchAllStats();
+  }, [fetchAllStats]);
 
-    const channel = supabase
-      .channel('dashboard-stats')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchAllStats)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, fetchAllStats)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'carts' }, fetchAllStats)
-      .subscribe();
-
-    return () => supabase.removeChannel(channel);
-  }, [timeRange]);
-
-  const formatCurrency = (amount: number) => 
+  const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
 
   const openAbandonedModal = () => setShowAbandonedModal(true);
@@ -210,17 +200,13 @@ export default function AdminDashboard() {
                 <div className="flex bg-[#F9F6F0] rounded-3xl p-1">
                   <button
                     onClick={() => setTimeRange('7d')}
-                    className={`px-6 py-2 text-sm font-medium rounded-3xl transition-all ${
-                      timeRange === '7d' ? 'bg-[#2A3F35] text-white' : 'hover:bg-white'
-                    }`}
+                    className={`px-6 py-2 text-sm font-medium rounded-3xl transition-all ${timeRange === '7d' ? 'bg-[#2A3F35] text-white' : 'hover:bg-white'}`}
                   >
                     Weekly
                   </button>
                   <button
                     onClick={() => setTimeRange('30d')}
-                    className={`px-6 py-2 text-sm font-medium rounded-3xl transition-all ${
-                      timeRange === '30d' ? 'bg-[#2A3F35] text-white' : 'hover:bg-white'
-                    }`}
+                    className={`px-6 py-2 text-sm font-medium rounded-3xl transition-all ${timeRange === '30d' ? 'bg-[#2A3F35] text-white' : 'hover:bg-white'}`}
                   >
                     Monthly
                   </button>
@@ -233,7 +219,9 @@ export default function AdminDashboard() {
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="day" />
                     <YAxis />
-                    <Tooltip formatter={(value: number) => [`₹${value}`, 'Revenue']} />
+                    <Tooltip 
+                      formatter={(value) => [`₹${Number(value || 0)}`, 'Revenue']} 
+                    />
                     <Line type="monotone" dataKey="revenue" stroke="#D4AF37" strokeWidth={3} />
                   </LineChart>
                 </ResponsiveContainer>
