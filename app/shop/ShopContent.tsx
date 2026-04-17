@@ -17,10 +17,9 @@ export default function ShopContent() {
   const [selectedMaterials, setSelectedMaterials] = useState<string[]>([]);
   const [selectedGemstones, setSelectedGemstones] = useState<string[]>([]);
   const [selectedColors, setSelectedColors] = useState<string[]>([]);
-  const [priceRange, setPriceRange] = useState(1000); // will be overridden by real max price
+  const [priceRange, setPriceRange] = useState(1000);
   const [sortType, setSortType] = useState<'newest' | 'price-low' | 'price-high'>('newest');
 
-  // Fetch products once
   useEffect(() => {
     async function fetchProducts() {
       const { data } = await supabase
@@ -28,46 +27,35 @@ export default function ShopContent() {
         .select('*')
         .eq('is_limited', false)
         .order('created_at', { ascending: false });
-      
+
       setProducts(data || []);
       setLoading(false);
     }
     fetchProducts();
   }, []);
 
-  // Realtime updates (when any product stock changes after purchase)
+  // Realtime updates
   useEffect(() => {
     const channel = supabase
       .channel('shop-realtime')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'products' },
-        () => {
-          // Refetch to keep everything live
-          supabase
-            .from('products')
-            .select('*')
-            .eq('is_limited', false)
-            .order('created_at', { ascending: false })
-            .then(({ data }) => {
-              setProducts(data || []);
-            });
-        }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => {
+        supabase
+          .from('products')
+          .select('*')
+          .eq('is_limited', false)
+          .order('created_at', { ascending: false })
+          .then(({ data }) => setProducts(data || []));
+      })
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => supabase.removeChannel(channel);
   }, []);
 
-  // Dynamic max price based on actual products
   const maxPrice = useMemo(() => {
     if (products.length === 0) return 1000;
     return Math.max(...products.map(p => p.price || 0));
   }, [products]);
 
-  // Update priceRange when maxPrice changes (first load)
   useEffect(() => {
     setPriceRange(maxPrice);
   }, [maxPrice]);
@@ -80,15 +68,14 @@ export default function ShopContent() {
   const filteredProducts = useMemo(() => {
     let result = [...products];
 
+    // Filters
     if (selectedCategories.length > 0) result = result.filter(p => selectedCategories.includes(p.category));
     if (selectedMaterials.length > 0) result = result.filter(p => selectedMaterials.includes(p.material || ''));
     if (selectedGemstones.length > 0) result = result.filter(p => selectedGemstones.includes(p.gemstone || ''));
     if (selectedColors.length > 0) {
-      result = result.filter(p => 
-        p.colors?.some((color: any) => selectedColors.includes(color.name))
-      );
+      result = result.filter(p => p.colors?.some((color: any) => selectedColors.includes(color.name)));
     }
-    result = result.filter(p => p.price <= priceRange);
+    result = result.filter(p => (p.price || 0) <= priceRange);
 
     if (searchTerm) {
       result = result.filter(p =>
@@ -99,27 +86,28 @@ export default function ShopContent() {
       );
     }
 
-    if (sortType === 'price-low') result.sort((a, b) => a.price - b.price);
-    if (sortType === 'price-high') result.sort((a, b) => b.price - a.price);
+    // Special sorting for Newest Arrivals
+    if (sortType === 'newest') {
+      result.sort((a, b) => {
+        // First priority: is_new = true comes first
+        if (a.is_new && !b.is_new) return -1;
+        if (!a.is_new && b.is_new) return 1;
+        // Then sort by creation date
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
+    } else if (sortType === 'price-low') {
+      result.sort((a, b) => a.price - b.price);
+    } else if (sortType === 'price-high') {
+      result.sort((a, b) => b.price - a.price);
+    }
 
     return result;
   }, [products, selectedCategories, selectedMaterials, selectedGemstones, selectedColors, priceRange, sortType, searchTerm]);
 
-  const toggleCategory = (cat: string) => {
-    setSelectedCategories(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]);
-  };
-
-  const toggleMaterial = (mat: string) => {
-    setSelectedMaterials(prev => prev.includes(mat) ? prev.filter(m => m !== mat) : [...prev, mat]);
-  };
-
-  const toggleGemstone = (gem: string) => {
-    setSelectedGemstones(prev => prev.includes(gem) ? prev.filter(g => g !== gem) : [...prev, gem]);
-  };
-
-  const toggleColor = (color: string) => {
-    setSelectedColors(prev => prev.includes(color) ? prev.filter(c => c !== color) : [...prev, color]);
-  };
+  const toggleCategory = (cat: string) => setSelectedCategories(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]);
+  const toggleMaterial = (mat: string) => setSelectedMaterials(prev => prev.includes(mat) ? prev.filter(m => m !== mat) : [...prev, mat]);
+  const toggleGemstone = (gem: string) => setSelectedGemstones(prev => prev.includes(gem) ? prev.filter(g => g !== gem) : [...prev, gem]);
+  const toggleColor = (color: string) => setSelectedColors(prev => prev.includes(color) ? prev.filter(c => c !== color) : [...prev, color]);
 
   if (loading) return <div className="text-center py-20 text-[#2A3F35]">Loading collection...</div>;
 
@@ -135,9 +123,6 @@ export default function ShopContent() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
         <div>
           <h1 className="text-4xl font-bold tracking-wider">Artisanal Collections</h1>
-          <p className="text-[#2A3F35]/70 mt-2">
-            Showing <span className="font-medium text-[#2A3F35]">{filteredProducts.length}</span> of <span className="font-medium text-[#2A3F35]">{products.length}</span> handcrafted pieces
-          </p>
         </div>
 
         <select value={sortType} onChange={(e) => setSortType(e.target.value as any)} className="bg-white border border-[#E8E0D0] px-6 py-3 rounded-full text-sm font-medium focus:outline-none focus:border-[#D4AF37]">
@@ -152,12 +137,12 @@ export default function ShopContent() {
           <div className="sticky top-6 bg-white border border-[#E8E0D0] rounded-3xl p-6 shadow-sm">
             <div className="flex justify-between items-center mb-6">
               <h3 className="font-semibold text-lg">Filters</h3>
-              <button onClick={() => { 
-                setSelectedCategories([]); 
-                setSelectedMaterials([]); 
-                setSelectedGemstones([]); 
-                setSelectedColors([]); 
-                setPriceRange(maxPrice); 
+              <button onClick={() => {
+                setSelectedCategories([]);
+                setSelectedMaterials([]);
+                setSelectedGemstones([]);
+                setSelectedColors([]);
+                setPriceRange(maxPrice);
               }} className="text-sm text-[#D4AF37] hover:text-[#2A3F35]">Clear All</button>
             </div>
 
@@ -224,13 +209,13 @@ export default function ShopContent() {
             {/* Price Range - NOW DYNAMIC */}
             <div>
               <h4 className="font-medium mb-4 text-[#2A3F35]">Price Range</h4>
-              <input 
-                type="range" 
-                min="100" 
-                max={maxPrice} 
-                value={priceRange} 
-                onChange={e => setPriceRange(Number(e.target.value))} 
-                className="w-full accent-[#D4AF37]" 
+              <input
+                type="range"
+                min="100"
+                max={maxPrice}
+                value={priceRange}
+                onChange={e => setPriceRange(Number(e.target.value))}
+                className="w-full accent-[#D4AF37]"
               />
               <div className="flex justify-between text-xs mt-2 text-[#2A3F35]/70">
                 <span>₹100</span>
@@ -242,29 +227,59 @@ export default function ShopContent() {
 
         <div className="flex-1">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6 md:gap-8">
-            {filteredProducts.map(product => (
-              <Link href={`/product/${product.id}`} key={product.id} className="group">
-                <div className="relative aspect-square overflow-hidden rounded-3xl bg-[#F9F6F0] shadow-sm border border-[#E8E0D0]/50 group-hover:shadow-xl transition-all duration-500">
-                  <img
-                    src={product.colors?.[0]?.image || product.images?.[0] || "/hero-bg.jpg"}
-                    alt={product.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition duration-700"
-                  />
-                  {product.is_new && <div className="absolute top-4 left-4 bg-[#2A3F35] text-white text-[10px] font-medium px-3 py-1 rounded-full tracking-widest">NEW</div>}
-                </div>
-                <div className="mt-4 px-1">
-                  <p className="text-xs tracking-widest text-[#D4AF37]">{product.category}</p>
-                  <h3 className="font-medium mt-1 text-[#2A3F35] group-hover:text-[#D4AF37] transition">{product.name}</h3>
-                  <p className="text-[#D4AF37] font-medium mt-1">₹{product.price}</p>
+            {filteredProducts.map(product => {
+              const original = product.original_price || product.price;
+              const hasDiscount = product.original_price && product.original_price > product.price;
+              const discountPercent = hasDiscount
+                ? Math.round(((original - product.price) / original) * 100)
+                : 0;
 
-                  {product.colors && product.colors.length > 0 && (
-                    <p className="text-xs text-[#D4AF37] mt-2">
-                      Available in {product.colors.length} colors
-                    </p>
-                  )}
-                </div>
-              </Link>
-            ))}
+              return (
+                <Link href={`/product/${product.id}`} key={product.id} className="group">
+                  <div className="relative aspect-square overflow-hidden rounded-3xl bg-[#F9F6F0] shadow-sm border border-[#E8E0D0]/50 group-hover:shadow-xl transition-all duration-500">
+                    <img
+                      src={product.colors?.[0]?.image || product.images?.[0] || "/hero-bg.jpg"}
+                      alt={product.name}
+                      className="w-full h-full object-cover group-hover:scale-105 transition duration-700"
+                    />
+
+                    {product.is_new && (
+                      <div className="absolute top-4 left-4 bg-white/95 backdrop-blur-sm text-[#2A3F35] text-xs font-semibold px-3 py-1.5 rounded-full tracking-widest shadow-sm">
+                        NEW
+                      </div>
+                    )}
+
+                    {/* Discount Badge - Cute & Premium */}
+                    {hasDiscount && (
+                      <div className="absolute top-4 right-4 bg-white/95 backdrop-blur-sm text-[#D4AF37] text-xs font-semibold px-3 py-1.5 rounded-2xl shadow-md border border-[#D4AF37]/30 flex items-center gap-1.5">
+                        <span>-{discountPercent}% OFF</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-4 px-1">
+                    <p className="text-xs tracking-widest text-[#D4AF37]">{product.category}</p>
+                    <h3 className="font-medium mt-1 text-[#2A3F35] group-hover:text-[#D4AF37] transition">{product.name}</h3>
+
+                    <div className="mt-1 flex items-baseline gap-2">
+                      {hasDiscount ? (
+                        <>
+                          <span className="text-[#D4AF37] font-medium">₹{product.price}</span>
+                          <span className="line-through text-[#2A3F35]/50 text-sm">₹{original}</span>
+                        </>
+                      ) : (
+                        <span className="text-[#D4AF37] font-medium">₹{product.price}</span>
+                      )}
+                    </div>
+
+                    {product.colors && product.colors.length > 0 && (
+                      <p className="text-xs text-[#D4AF37] mt-2">
+                        Available in {product.colors.length} colors
+                      </p>
+                    )}
+                  </div>
+                </Link>
+              );
+            })}
           </div>
         </div>
       </div>

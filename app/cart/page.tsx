@@ -1,9 +1,8 @@
 'use client';
-import Image from 'next/image';
-import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { Trash2 } from 'lucide-react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
 import toast, { Toaster } from 'react-hot-toast';
 import { confirmPaymentServerAction } from '@/app/actions/orderActions';
@@ -20,54 +19,125 @@ export default function CartPage() {
   const [transactionId, setTransactionId] = useState('');
   const [userId, setUserId] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  // Dispatch event so header cart icon updates
+  const dispatchCartUpdate = () => {
+    window.dispatchEvent(new Event('cartUpdated'));
+  };
+
+  // Sync latest price + original_price from products table
+  const syncCartPrices = async (items: any[]): Promise<any[]> => {
+    if (!items?.length) return items;
+
+    setIsSyncing(true);
+
+    const syncedItems = await Promise.all(
+      items.map(async (item: any) => {
+        const { data: product } = await supabase
+          .from('products')
+          .select('price, original_price')
+          .eq('id', item.id)
+          .single();
+
+        if (product) {
+          return {
+            ...item,
+            price: product.price ?? item.price,
+            original_price: product.original_price ?? item.original_price ?? product.price,
+          };
+        }
+        return item;
+      })
+    );
+
+    setIsSyncing(false);
+    return syncedItems;
+  };
 
   useEffect(() => {
-    let channel: any;
+    let channel: any = null;
 
-    const init = async () => {
+    const initCart = async () => {
+      setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         setLoading(false);
         return;
       }
+
       setUserId(user.id);
 
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('carts')
         .select('*')
         .eq('user_id', user.id)
         .single();
 
-      setCartItems(data?.items || []);
+      if (error && error.code !== 'PGRST116') {
+        console.error('Cart fetch error:', error);
+      }
+
+      let initialItems = data?.items || [];
+      initialItems = await syncCartPrices(initialItems);
+
+      setCartItems(initialItems);
       setLoading(false);
 
+      // Silent DB update with fresh prices
+      if (user.id && initialItems.length > 0) {
+        await supabase
+          .from('carts')
+          .update({ items: initialItems, updated_at: new Date().toISOString() })
+          .eq('user_id', user.id);
+      }
+
+      // Realtime - Force fresh fetch + sync (most reliable for JSONB)
       channel = supabase
-        .channel(`cart-${user.id}`)
+        .channel(`cart-realtime-${user.id}`)
         .on(
           'postgres_changes',
-          { event: '*', schema: 'public', table: 'carts', filter: `user_id=eq.${user.id}` },
-          (payload) => {
-            if (payload.eventType === 'DELETE') setCartItems([]);
-            else setCartItems(payload.new?.items || []);
+          {
+            event: '*',
+            schema: 'public',
+            table: 'carts',
+            filter: `user_id=eq.${user.id}`,
+          },
+          async (payload) => {
+            console.log('Cart realtime update:', payload);
+
+            if (payload.eventType === 'DELETE') {
+              setCartItems([]);
+              dispatchCartUpdate();
+              return;
+            }
+
+            // Force fresh fetch + price sync
+            const { data: freshCart } = await supabase
+              .from('carts')
+              .select('items')
+              .eq('user_id', user.id)
+              .single();
+
+            let freshItems = freshCart?.items || [];
+            freshItems = await syncCartPrices(freshItems);
+
+            setCartItems(freshItems);
+            dispatchCartUpdate();        // ← This updates header
           }
         )
         .subscribe();
     };
 
-    init();
+    initCart();
 
     return () => {
       if (channel) supabase.removeChannel(channel);
     };
   }, []);
 
-  const dispatchCartUpdate = () => {
-    window.dispatchEvent(new Event('cartUpdated'));
-  };
-
   const getUniqueId = (item: any) => `${item.id}-${item.color || 'no-color'}`;
 
-  // ✅ STOCK CHECK HELPER (industry grade)
   const getAvailableQty = async (item: any) => {
     const { data } = await supabase
       .from('products')
@@ -81,28 +151,23 @@ export default function CartPage() {
       const color = data.colors.find((c: any) => c.name === item.color);
       return color?.qty ?? 0;
     }
-
     return data.stock ?? 0;
   };
 
-  // ✅ UPDATED WITH STOCK VALIDATION
   const updateQty = async (uniqueId: string, newQty: number) => {
     if (newQty < 1 || isProcessing) return;
 
-    const item = cartItems.find(i => getUniqueId(i) === uniqueId);
+    const item = cartItems.find((i) => getUniqueId(i) === uniqueId);
     if (!item) return;
 
     const availableQty = await getAvailableQty(item);
-
     if (newQty > availableQty) {
       toast.error(`Only ${availableQty} available`);
       return;
     }
 
-    const updated = cartItems.map(i =>
-      getUniqueId(i) === uniqueId
-        ? { ...i, qty: newQty }
-        : i
+    const updated = cartItems.map((i) =>
+      getUniqueId(i) === uniqueId ? { ...i, qty: newQty } : i
     );
 
     setCartItems(updated);
@@ -114,16 +179,13 @@ export default function CartPage() {
         .eq('user_id', userId);
     }
 
-    dispatchCartUpdate();
+    dispatchCartUpdate();   // ← Important for header
   };
 
   const removeItem = async (uniqueId: string) => {
     if (isProcessing) return;
 
-    const updated = cartItems.filter(
-      item => getUniqueId(item) !== uniqueId
-    );
-
+    const updated = cartItems.filter((item) => getUniqueId(item) !== uniqueId);
     setCartItems(updated);
 
     if (userId) {
@@ -133,12 +195,29 @@ export default function CartPage() {
         .eq('user_id', userId);
     }
 
-    dispatchCartUpdate();
+    dispatchCartUpdate();   // ← Important for header
   };
 
-  const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.qty, 0);
-  const tax = Math.round(subtotal * 0.08);
-  const total = subtotal + tax;
+  // Professional pricing with discount
+  const calculatePricing = (itemsToCalculate: any[] = cartItems) => {
+    let originalSubtotal = 0;
+    let finalSubtotal = 0;
+
+    itemsToCalculate.forEach((item) => {
+      const price = Number(item.price) || 0;
+      const originalPrice = Number(item.original_price) || price;
+      originalSubtotal += originalPrice * item.qty;
+      finalSubtotal += price * item.qty;
+    });
+
+    const discount = originalSubtotal - finalSubtotal;
+    const tax = Math.round(finalSubtotal * 0.08);
+    const total = finalSubtotal + tax;
+
+    return { originalSubtotal, finalSubtotal, discount, tax, total };
+  };
+
+  const { originalSubtotal, finalSubtotal, discount, tax, total } = calculatePricing();
 
   const upiId = process.env.NEXT_PUBLIC_UPI_ID || 'yourname@oksbi';
   const upiLink = `upi://pay?pa=${upiId}&pn=Ziwara&am=${total}&cu=INR&tn=Order Payment`;
@@ -148,18 +227,18 @@ export default function CartPage() {
       toast.error("Please enter Transaction ID / UPI Reference");
       return;
     }
-    if (isProcessing || !userId) {
-      toast.error("Please login again and try");
-      return;
-    }
+    if (isProcessing || !userId) return;
 
     setIsProcessing(true);
 
-    // Final stock validation (prevents race conditions)
-    for (const item of cartItems) {
+    let itemsForOrder = await syncCartPrices(cartItems);
+    const { total: finalTotal } = calculatePricing(itemsForOrder);
+
+    // Final stock check
+    for (const item of itemsForOrder) {
       const available = await getAvailableQty(item);
       if (item.qty > available) {
-        toast.error(`Only ${available} left for "${item.name}". Please reduce quantity or remove it.`);
+        toast.error(`Only ${available} left for "${item.name}". Please adjust.`);
         setIsProcessing(false);
         return;
       }
@@ -167,23 +246,23 @@ export default function CartPage() {
 
     const formData = new FormData();
     formData.append('transactionId', transactionId.trim());
-    formData.append('total', total.toString());
-    formData.append('items', JSON.stringify(cartItems));
+    formData.append('total', finalTotal.toString());
+    formData.append('items', JSON.stringify(itemsForOrder));
 
     try {
       const result = await confirmPaymentServerAction(formData);
 
       if (result.success) {
-        toast.success("Order placed successfully! ✨ Waiting for admin confirmation.");
+        toast.success("Order placed successfully! ✨");
         setStep('cart');
-        setCartItems([]);
+        setCartItems([]);           // Clear local state
         setTransactionId('');
-        window.dispatchEvent(new Event('orderPlaced'));
+        dispatchCartUpdate();       // ← This updates header immediately
+        window.dispatchEvent(new Event('orderPlaced')); // For any other listeners
       } else {
-        toast.error(result.error || "Failed to place order. Please try again.");
+        toast.error(result.error || "Failed to place order");
       }
-    } catch (err: any) {
-      console.error("Order placement failed:", err);
+    } catch (err) {
       toast.error("Something went wrong. Please try again.");
     } finally {
       setIsProcessing(false);
@@ -201,8 +280,10 @@ export default function CartPage() {
           <div className="flex flex-col md:flex-row md:items-end justify-between mb-10 gap-4">
             <div>
               <div className="text-sm text-[#2A3F35]/70 mb-1">Home → Cart</div>
-              <h1 className="text-4xl md:text-5xl font-bold text-[#2A3F35] leading-none">Shopping Cart</h1>
-              <p className="text-[#2A3F35]/60 mt-1">{cartItems.length} items</p>
+              <h1 className="text-4xl md:text-5xl font-bold text-[#2A3F35]">Shopping Cart</h1>
+              <p className="text-[#2A3F35]/60 mt-1">
+                {cartItems.length} items {isSyncing && '(updating prices...)'}
+              </p>
             </div>
 
             <Link href="/shop" className="text-[#D4AF37] hover:text-[#2A3F35] font-medium flex items-center gap-1 transition-colors">
@@ -224,6 +305,8 @@ export default function CartPage() {
               ) : (
                 cartItems.map((item) => {
                   const uniqueId = getUniqueId(item);
+                  const originalPrice = item.original_price || item.price;
+                  const hasDiscount = Number(item.original_price) > Number(item.price);
 
                   return (
                     <div key={uniqueId} className="flex flex-col md:flex-row gap-6 bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-[#E8E0D0] mb-8 hover:shadow-md transition-shadow">
@@ -238,9 +321,9 @@ export default function CartPage() {
 
                         <div className="mt-6 flex items-center justify-between md:justify-start gap-8">
                           <div className="flex border border-[#E8E0D0] rounded-full overflow-hidden bg-white">
-                            <button onClick={() => updateQty(uniqueId, item.qty - 1)} className="px-5 py-3">−</button>
+                            <button onClick={() => updateQty(uniqueId, item.qty - 1)} className="px-5 py-3 hover:bg-gray-100">−</button>
                             <div className="px-8 py-3 font-medium text-lg border-x border-[#E8E0D0]">{item.qty}</div>
-                            <button onClick={() => updateQty(uniqueId, item.qty + 1)} className="px-5 py-3">+</button>
+                            <button onClick={() => updateQty(uniqueId, item.qty + 1)} className="px-5 py-3 hover:bg-gray-100">+</button>
                           </div>
 
                           <button onClick={() => removeItem(uniqueId)} className="text-red-500 hover:text-red-700 transition">
@@ -249,8 +332,15 @@ export default function CartPage() {
                         </div>
                       </div>
 
-                      <div className="text-right text-xl font-medium text-[#2A3F35] md:mt-2">
-                        ₹{item.price * item.qty}
+                      <div className="text-right md:mt-2">
+                        {hasDiscount ? (
+                          <div>
+                            <div className="line-through text-[#2A3F35]/50 text-base">₹{originalPrice}</div>
+                            <div className="text-xl font-medium text-[#2A3F35]">₹{item.price} × {item.qty}</div>
+                          </div>
+                        ) : (
+                          <div className="text-xl font-medium text-[#2A3F35]">₹{item.price * item.qty}</div>
+                        )}
                       </div>
                     </div>
                   );
@@ -258,20 +348,43 @@ export default function CartPage() {
               )}
             </div>
 
-            {/* Order Summary (UNCHANGED UI) */}
+            {/* Order Summary - Professional */}
             <div className="lg:w-96">
               <div className="bg-white rounded-3xl p-6 md:p-8 border border-[#E8E0D0] sticky top-8 shadow-sm">
                 <h2 className="text-2xl font-medium mb-8 text-[#2A3F35]">Order Summary</h2>
 
-                <div className="space-y-5 mb-8 text-sm">
-                  <div className="flex justify-between"><span>Subtotal</span><span>₹{subtotal}</span></div>
-                  <div className="flex justify-between"><span>Shipping</span><span className="text-green-600">Free</span></div>
-                  <div className="flex justify-between"><span>Est. Tax</span><span>₹{tax}</span></div>
-                  <div className="border-t pt-5 flex justify-between text-xl font-medium text-[#2A3F35]">
-                    <span>Total</span><span>₹{total}</span>
-                  </div>
-                </div>
+                {cartItems.length > 0 && (
+                  <div className="space-y-6 mb-10">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-black">MRP</span>
+                      <span>₹{originalSubtotal}</span>
+                    </div>
 
+                    {discount > 0 && (
+                      <div className="flex justify-between text-sm text-green-600">
+                        <span>Discount</span>
+                        <span>- ₹{discount}</span>
+                      </div>
+                    )}
+
+                    <div className="flex justify-between text-sm border-t pt-4">
+                      <span className="font-medium">Subtotal</span>
+                      <span className="font-medium">₹{finalSubtotal}</span>
+                    </div>
+
+                    <div className="flex justify-between text-sm">
+                      <span className="text-[#2A3F35]/70">Estimated Tax (8%)</span>
+                      <span>₹{tax}</span>
+                    </div>
+
+                    <div className="border-t pt-6 flex justify-between text-2xl font-semibold text-[#2A3F35]">
+                      <span>Total</span>
+                      <span>₹{total}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Payment Steps - unchanged */}
                 {step === 'cart' ? (
                   <button
                     onClick={() => setStep('payment')}
@@ -286,8 +399,8 @@ export default function CartPage() {
                       <div className="flex justify-center mb-6">
                         <QRCode value={upiLink} size={180} />
                       </div>
-                      <p className="font-medium text-lg">₹{total} to pay</p>
-                      <p className="font-mono text-sm mt-2">UPI ID: <strong>{upiId}</strong></p>
+                      <p className="font-medium text-2xl mb-1">₹{total}</p>
+                      <p className="font-mono text-sm">UPI ID: <strong>{upiId}</strong></p>
                     </div>
 
                     <button
@@ -300,13 +413,13 @@ export default function CartPage() {
                   </div>
                 ) : (
                   <div className="text-center">
-                    <h3 className="font-medium mb-4">Enter Transaction ID</h3>
+                    <h3 className="font-medium mb-4 text-[#2A3F35]">Enter Transaction ID</h3>
                     <input
                       type="text"
                       value={transactionId}
                       onChange={(e) => setTransactionId(e.target.value)}
-                      placeholder="UPI Reference / Transaction ID"
-                      className="w-full border border-[#E8E0D0] rounded-full px-6 py-4 text-center"
+                      placeholder="UPI Reference Number"
+                      className="w-full border border-[#E8E0D0] rounded-full px-6 py-4 text-center focus:outline-none focus:border-[#D4AF37]"
                       disabled={isProcessing}
                     />
                     <button
@@ -314,13 +427,12 @@ export default function CartPage() {
                       disabled={!transactionId.trim() || isProcessing}
                       className="mt-6 w-full bg-[#2A3F35] text-white py-5 rounded-full font-medium hover:bg-[#D4AF37] disabled:bg-gray-300 transition-all"
                     >
-                      {isProcessing ? "Processing..." : "Confirm & Place Order"}
+                      {isProcessing ? "Processing Order..." : "Confirm & Place Order"}
                     </button>
                   </div>
                 )}
               </div>
             </div>
-
           </div>
         </div>
       </div>

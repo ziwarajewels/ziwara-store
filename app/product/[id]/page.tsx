@@ -1,7 +1,6 @@
 'use client';
 
-import Image from 'next/image';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { use } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import toast, { Toaster } from 'react-hot-toast';
@@ -17,32 +16,72 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
   const [addedToCart, setAddedToCart] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  useEffect(() => {
-    async function fetchProduct() {
-      const { data } = await supabase
-        .from('products')
-        .select('*')
-        .eq('id', id)
-        .single();
+  // Fetch product function
+  const fetchProduct = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('id', id)
+      .single();
 
+    if (error) {
+      console.error("Error fetching product:", error);
+      toast.error("Failed to load product details");
+    } else {
       setProduct(data);
 
       if (data?.colors?.length > 0) {
         const validColor = data.colors.find((c: any) => c.image && c.image.trim() !== '');
         setSelectedColor(validColor || data.colors[0]);
       }
-
-      setLoading(false);
     }
-
-    fetchProduct();
+    setLoading(false);
   }, [id]);
+
+  // Initial fetch + realtime subscription
+  useEffect(() => {
+    fetchProduct();
+
+    // Realtime subscription
+    const channel = supabase
+      .channel(`product-detail-${id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'products',
+          filter: `id=eq.${id}`
+        },
+        (payload) => {
+          console.log("Realtime product update received:", payload.new);
+          setProduct(payload.new);
+
+          // Safely update selected color if it still exists
+          if (payload.new?.colors?.length > 0 && selectedColor) {
+            const colorStillExists = payload.new.colors.find((c: any) => c.name === selectedColor.name);
+            if (!colorStillExists) {
+              setSelectedColor(payload.new.colors[0]);
+            }
+          }
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIPTION_ERROR') {
+          console.warn("Realtime subscription error - falling back to polling");
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id, fetchProduct, selectedColor]);
 
   useEffect(() => {
     setSelectedImageIndex(0);
   }, [selectedColor]);
 
-  // Live stock check
   const getAvailableQty = () => {
     if (!product) return 0;
     if (product.colors?.length > 0 && selectedColor) {
@@ -74,7 +113,6 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
     const userId = user.id;
     const selectedColorName = selectedColor?.name || null;
 
-    // Get current cart
     let { data: existingCart } = await supabase
       .from('carts')
       .select('*')
@@ -101,7 +139,8 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
       price: product.price,
       image: selectedColor?.image || product.images?.[0] || '',
       qty: 1,
-      color: selectedColorName
+      color: selectedColorName,
+      original_price: product.original_price,
     };
 
     if (existingIndex > -1) {
@@ -129,11 +168,13 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
     setIsProcessing(false);
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading masterpiece...</div>;
   if (!product) return <div className="min-h-screen flex items-center justify-center">Product not found</div>;
 
-  const hasValidColorImage = selectedColor && selectedColor.image && selectedColor.image.trim() !== '';
+  const originalPrice = product.original_price || product.price;
+  const hasDiscount = product.original_price && product.original_price > product.price;
 
+  const hasValidColorImage = selectedColor && selectedColor.image && selectedColor.image.trim() !== '';
   const images = hasValidColorImage
     ? [selectedColor.image, ...(product.images || []).filter((img: string) => img !== selectedColor.image)]
     : product.images?.length ? product.images : ['/hero-bg.jpg'];
@@ -149,18 +190,18 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
           {/* IMAGE SECTION */}
           <div className="lg:w-5/12">
             <div className="aspect-square bg-[#F9F6F0] rounded-3xl overflow-hidden shadow-sm">
-              <img
-                src={images[selectedImageIndex]}
-                className="w-full h-full object-cover"
-                alt={product.name}
+              <img 
+                src={images[selectedImageIndex]} 
+                className="w-full h-full object-cover" 
+                alt={product.name} 
               />
             </div>
 
             <div className="flex gap-4 mt-6 overflow-x-auto pb-4 snap-x scrollbar-hide">
               {images.map((img: string, i: number) => (
-                <button
-                  key={i}
-                  onClick={() => setSelectedImageIndex(i)}
+                <button 
+                  key={i} 
+                  onClick={() => setSelectedImageIndex(i)} 
                   className={`flex-shrink-0 snap-start border-2 rounded-2xl overflow-hidden transition-all ${selectedImageIndex === i ? 'border-[#D4AF37] scale-105' : 'border-transparent hover:border-[#E8E0D0]'}`}
                 >
                   <img src={img} className="w-20 h-20 object-cover" alt={`Thumbnail ${i + 1}`} />
@@ -169,16 +210,24 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
             </div>
           </div>
 
-          {/* DETAILS */}
+          {/* DETAILS SECTION */}
           <div className="lg:w-7/12">
             <div className="mb-8">
-              <p className="text-[#D4AF37] tracking-widest text-sm font-medium">
-                {product.category || 'Handcrafted Jewelry'}
-              </p>
               <h1 className="text-4xl md:text-5xl font-bold tracking-tight mt-2 leading-none">
                 {product.name}
               </h1>
-              <p className="text-4xl font-medium text-[#D4AF37] mt-4">₹{product.price}</p>
+
+              {/* Live Price with Discount */}
+              <div className="mt-4 flex items-baseline gap-3">
+                {hasDiscount ? (
+                  <>
+                    <span className="text-4xl font-medium text-[#D4AF37]">₹{product.price}</span>
+                    <span className="line-through text-[#2A3F35]/50 text-2xl">₹{originalPrice}</span>
+                  </>
+                ) : (
+                  <span className="text-4xl font-medium text-[#D4AF37]">₹{product.price}</span>
+                )}
+              </div>
             </div>
 
             <div className="prose prose-neutral max-w-none">
@@ -268,9 +317,7 @@ export default function ProductDetail({ params }: { params: Promise<{ id: string
               {isProcessing ? 'Adding...' : addedToCart ? 'Added to Cart ✓' : 'Add to Cart'}
             </button>
 
-            <p className="text-center text-xs text-[#2A3F35]/50 mt-6">
-              Free shipping
-            </p>
+            <p className="text-center text-xs text-[#2A3F35]/50 mt-6">Free shipping</p>
           </div>
         </div>
       </div>

@@ -2,7 +2,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { ShoppingCart, User, Search, Menu, X } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 
@@ -12,42 +12,57 @@ export default function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const router = useRouter();
 
-  // Cart count logic (unchanged)
+  // Fetch cart count
+  const fetchCartCount = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setCartCount(0);
+      return;
+    }
+
+    const { data } = await supabase
+      .from('carts')
+      .select('items')
+      .eq('user_id', user.id)
+      .single();
+
+    const count = data?.items?.reduce((sum: number, item: any) => sum + (item.qty || 0), 0) || 0;
+    setCartCount(count);
+  }, []);
+
+  // Setup realtime subscription + event listeners
   useEffect(() => {
-    let subscription: any = null;
+    let channel: any = null;
 
-    const fetchCartCount = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setCartCount(0);
-        return;
-      }
-      const { data } = await supabase
-        .from('carts')
-        .select('items')
-        .eq('user_id', user.id)
-        .single();
-
-      const count = data?.items?.reduce((sum: number, item: any) => sum + (item.qty || 0), 0) || 0;
-      setCartCount(count);
-    };
-
-    fetchCartCount();
-
-    const setupSubscription = async () => {
+    const setupRealtime = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      subscription = supabase
-        .channel('cart-changes')
+
+      // Realtime subscription on carts table
+      channel = supabase
+        .channel(`header-cart-${user.id}`)   // Unique channel name per user
         .on(
           'postgres_changes',
-          { event: '*', schema: 'public', table: 'carts', filter: `user_id=eq.${user.id}` },
-          fetchCartCount
+          {
+            event: '*',
+            schema: 'public',
+            table: 'carts',
+            filter: `user_id=eq.${user.id}`,
+          },
+          () => {
+            fetchCartCount();   // Refresh count whenever cart changes
+          }
         )
         .subscribe();
     };
-    setupSubscription();
 
+    // Initial fetch
+    fetchCartCount();
+
+    // Setup realtime
+    setupRealtime();
+
+    // Listen to custom events from CartPage
     const handleCartUpdate = () => fetchCartCount();
     const handleOrderPlaced = () => setCartCount(0);
 
@@ -57,11 +72,13 @@ export default function Header() {
     return () => {
       window.removeEventListener('cartUpdated', handleCartUpdate);
       window.removeEventListener('orderPlaced', handleOrderPlaced);
-      if (subscription) supabase.removeChannel(subscription);
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
     };
-  }, []);
+  }, [fetchCartCount]);
 
-  // Block body scroll when mobile menu is open
+  // Mobile menu body scroll lock
   useEffect(() => {
     if (isMobileMenuOpen) {
       document.body.style.overflow = 'hidden';
@@ -87,7 +104,7 @@ export default function Header() {
       <header className="bg-white border-b border-[#E8E0D0] sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 flex items-center justify-between">
 
-          {/* Logo - SMALLER & ELEGANT on mobile, full size on desktop */}
+          {/* Logo */}
           <Link href="/" className="flex items-center gap-3">
             <div className="w-12 h-12 md:w-16 md:h-16 rounded-full overflow-hidden border-2 border-[#D4AF37]/30 shadow-sm bg-white flex items-center justify-center">
               <Image
@@ -102,7 +119,7 @@ export default function Header() {
             <span className="text-2xl md:text-3xl tracking-widest text-[#2A3F35] font-bold">ZIWARA</span>
           </Link>
 
-          {/* DESKTOP ONLY: Nav + Search */}
+          {/* Desktop Nav + Search */}
           <div className="hidden md:flex items-center flex-1 max-w-[640px] mx-8">
             <nav className="flex items-center gap-8 text-lg font-medium text-[#2A3F35]">
               <Link href="/shop" className="hover:text-[#D4AF37] transition">Shop All</Link>
@@ -128,7 +145,7 @@ export default function Header() {
             </div>
           </div>
 
-          {/* Right side icons + Mobile Hamburger */}
+          {/* Icons */}
           <div className="flex items-center gap-5 md:gap-6">
             <Link href="/cart" className="relative hover:text-[#D4AF37] transition">
               <ShoppingCart className="w-5 h-5 md:w-6 md:h-6" />
@@ -143,7 +160,6 @@ export default function Header() {
               <User className="w-5 h-5 md:w-6 md:h-6" />
             </Link>
 
-            {/* Hamburger */}
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               className="md:hidden text-[#2A3F35]"
@@ -155,33 +171,22 @@ export default function Header() {
         </div>
       </header>
 
-      {/* MOBILE MENU */}
+      {/* Mobile Menu - unchanged */}
       <div
         className={`md:hidden fixed inset-0 bg-[#F9F6F0] z-[999] flex flex-col transition-transform duration-300 ${
           isMobileMenuOpen ? 'translate-y-0' : '-translate-y-full'
         }`}
       >
-        {/* Menu Header */}
         <div className="px-6 py-6 border-b border-[#E8E0D0] flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Image
-              src="/logocenter.png"
-              alt="Ziwara"
-              width={48}
-              height={48}
-              className="object-contain"
-            />
+            <Image src="/logocenter.png" alt="Ziwara" width={48} height={48} className="object-contain" />
             <span className="text-3xl tracking-widest text-[#2A3F35] font-bold">ZIWARA</span>
           </div>
-          <button
-            onClick={() => setIsMobileMenuOpen(false)}
-            className="text-[#2A3F35]"
-          >
+          <button onClick={() => setIsMobileMenuOpen(false)} className="text-[#2A3F35]">
             <X size={32} />
           </button>
         </div>
 
-        {/* Search */}
         <div className="p-6">
           <form onSubmit={handleSearch} className="relative">
             <input
@@ -191,29 +196,17 @@ export default function Header() {
               placeholder="Search by name, gemstone..."
               className="w-full bg-white border border-[#E8E0D0] rounded-3xl py-4 px-6 text-base focus:outline-none focus:border-[#D4AF37]"
             />
-            <button
-              type="submit"
-              className="absolute right-6 top-1/2 -translate-y-1/2 text-[#2A3F35]/70"
-            >
+            <button type="submit" className="absolute right-6 top-1/2 -translate-y-1/2 text-[#2A3F35]/70">
               <Search size={24} />
             </button>
           </form>
         </div>
 
-        {/* Navigation Links */}
         <nav className="flex-1 px-6 py-8 space-y-8 text-3xl font-medium text-[#2A3F35]">
-          <Link
-            href="/shop"
-            onClick={() => setIsMobileMenuOpen(false)}
-            className="block hover:text-[#D4AF37] transition-colors"
-          >
+          <Link href="/shop" onClick={() => setIsMobileMenuOpen(false)} className="block hover:text-[#D4AF37]">
             Shop All
           </Link>
-          <Link
-            href="/our-story"
-            onClick={() => setIsMobileMenuOpen(false)}
-            className="block hover:text-[#D4AF37] transition-colors"
-          >
+          <Link href="/our-story" onClick={() => setIsMobileMenuOpen(false)} className="block hover:text-[#D4AF37]">
             Our Story
           </Link>
         </nav>
