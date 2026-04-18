@@ -105,7 +105,6 @@ export default function Home() {
               </div>
               <div className="mt-5 text-center">
                 <h3 className="font-medium text-lg">{product.name}</h3>
-                <p className="text-[#D4AF37] font-medium mt-1">₹{product.price}</p>
               </div>
             </Link>
           ))}
